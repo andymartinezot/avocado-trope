@@ -220,6 +220,10 @@ pub struct AgentInfo {
     tool_index: HashMap<String, usize>,
     /// Summed `usage.output_tokens`, counted once per assistant turn.
     pub output_tokens: u64,
+    /// Context in use as of the latest request (see `FactKind::Context`).
+    pub context_tokens: u64,
+    /// The model's context limit, when the format states it.
+    pub context_window: Option<u64>,
     pub first_ts: Option<DateTime<Utc>>,
     pub last_ts: Option<DateTime<Utc>>,
     /// `requestId`s whose usage has already been counted. Claude Code splits one
@@ -254,6 +258,8 @@ impl AgentInfo {
             tool_calls: Vector::new(),
             tool_index: HashMap::new(),
             output_tokens: 0,
+            context_tokens: 0,
+            context_window: None,
             first_ts: None,
             last_ts: None,
             seen_dedup_keys: HashSet::new(),
@@ -478,6 +484,14 @@ impl SessionModel {
                         // Saturating: counts come from untrusted transcript
                         // content; overflow must not panic (debug) or wrap.
                         _ => a.output_tokens = a.output_tokens.saturating_add(*output),
+                    }
+                }
+            }
+            FactKind::Context { used, window } => {
+                if let Some(a) = self.agents.get_mut(id) {
+                    a.context_tokens = *used;
+                    if window.is_some() {
+                        a.context_window = *window;
                     }
                 }
             }

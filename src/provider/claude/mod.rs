@@ -47,6 +47,31 @@ pub enum Source {
 /// Test-only. Production reads a file through a [`Stream`], which is what the
 /// feeders do; this is the shape the tests find convenient for stating one
 /// record at a time.
+/// A typed prompt minus the `<system-reminder>` blocks Claude Code splices
+/// into it (session names, hook output, context notes): those are not what the
+/// person wrote, and they would otherwise become the session's title. `None`
+/// when nothing is left: a message that is only reminders was injected, not
+/// typed.
+fn strip_reminders(text: &str) -> Option<String> {
+    const OPEN: &str = "<system-reminder>";
+    const CLOSE: &str = "</system-reminder>";
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(start) = rest.find(OPEN) {
+        out.push_str(&rest[..start]);
+        match rest[start..].find(CLOSE) {
+            Some(end) => rest = &rest[start + end + CLOSE.len()..],
+            None => {
+                rest = "";
+                break;
+            }
+        }
+    }
+    out.push_str(rest);
+    let out = out.trim();
+    (!out.is_empty()).then(|| out.to_string())
+}
+
 #[cfg(test)]
 #[derive(Debug)]
 pub enum Record {
@@ -99,6 +124,8 @@ pub struct Stream {
     /// Whether the main transcript has stated its own agent yet. The root
     /// has no record of its own birth, so its first dated line states it.
     announced: bool,
+    /// The person named the session: later generated titles don't replace it.
+    named: bool,
 }
 
 impl Stream {
@@ -107,6 +134,7 @@ impl Stream {
             source,
             last_ts: None,
             announced: false,
+            named: false,
         }
     }
 
@@ -119,6 +147,13 @@ impl Stream {
 
     /// State what an already-parsed entry says.
     pub fn push_entry(&mut self, entry: &Entry) -> Option<Statement> {
+        match entry {
+            Entry::CustomTitle(e) if e.title.as_ref().is_some_and(|t| !t.trim().is_empty()) => {
+                self.named = true
+            }
+            Entry::AiTitle(_) if self.named => return None,
+            _ => {}
+        }
         let at = entry_timestamp(entry).or(self.last_ts);
         if at.is_some() {
             self.last_ts = at;
@@ -208,6 +243,21 @@ pub fn facts(source: &Source, entry: &Entry) -> Vec<Fact> {
                         dedup: e.envelope.request_id.clone(),
                     }));
                 }
+                if let Some(usage) = &msg.usage {
+                    // The prompt this request read: fresh input plus both
+                    // cache sides. Claude records no window size.
+                    let used = [
+                        usage.input_tokens,
+                        usage.cache_creation_input_tokens,
+                        usage.cache_read_input_tokens,
+                    ]
+                    .into_iter()
+                    .flatten()
+                    .fold(0u64, u64::saturating_add);
+                    if used > 0 {
+                        out.push(about(FactKind::Context { used, window: None }));
+                    }
+                }
                 // Blocks in order: a spawn carries the text nearest above it as
                 // its stated reason, which the fold reads off the last Reasoning.
                 for block in &msg.content {
@@ -268,11 +318,13 @@ pub fn facts(source: &Source, entry: &Entry) -> Vec<Fact> {
                             kind: FactKind::Ended(status),
                         });
                     }
-                } else if e.is_human_prompt() {
+                } else if e.is_human_prompt()
+                    && let Some(typed) = strip_reminders(text)
+                {
                     out.push(Fact {
                         agent: Some(owner.clone()),
                         ts,
-                        kind: FactKind::Prompt(text.to_string()),
+                        kind: FactKind::Prompt(typed),
                     });
                 }
             }
@@ -317,6 +369,11 @@ pub fn facts(source: &Source, entry: &Entry) -> Vec<Fact> {
         // Untimed session metadata, off the timeline.
         Entry::AiTitle(e) => {
             if let Some(title) = &e.title {
+                out.push(meta(FactKind::Title(title.clone())));
+            }
+        }
+        Entry::CustomTitle(e) => {
+            if let Some(title) = e.title.as_ref().filter(|t| !t.trim().is_empty()) {
                 out.push(meta(FactKind::Title(title.clone())));
             }
         }
@@ -460,6 +517,50 @@ pub(crate) fn summarize_tool(
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn prompts_drop_system_reminders() {
+        let strip = |t| super::strip_reminders(t);
+        assert_eq!(
+            strip("<system-reminder>named x</system-reminder>\nfix the build").as_deref(),
+            Some("fix the build")
+        );
+        assert_eq!(
+            strip("a <system-reminder>r</system-reminder>b").as_deref(),
+            Some("a b")
+        );
+        assert_eq!(strip("<system-reminder>only</system-reminder>\n"), None);
+        assert_eq!(strip("plain").as_deref(), Some("plain"));
+        assert_eq!(strip("x <system-reminder>open").as_deref(), Some("x"));
+    }
+
+    #[test]
+    fn a_custom_title_outranks_the_generated_one() {
+        let mut s = Stream::new(Source::Main);
+        let title = |st: Option<crate::fact::Statement>| {
+            st.and_then(|st| {
+                st.facts.into_iter().find_map(|f| match f.kind {
+                    FactKind::Title(t) => Some(t),
+                    _ => None,
+                })
+            })
+        };
+        assert_eq!(
+            title(s.push(r#"{"type":"ai-title","aiTitle":"Generated","sessionId":"s"}"#))
+                .as_deref(),
+            Some("Generated")
+        );
+        assert_eq!(
+            title(s.push(r#"{"type":"custom-title","customTitle":"mine","sessionId":"s"}"#))
+                .as_deref(),
+            Some("mine")
+        );
+        assert_eq!(
+            title(s.push(r#"{"type":"ai-title","aiTitle":"Later","sessionId":"s"}"#)),
+            None
+        );
+    }
+
     use super::*;
 
     /// The shipped demo session, discovered the way a live one is, stated per

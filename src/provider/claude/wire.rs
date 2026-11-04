@@ -42,6 +42,10 @@ pub enum Entry {
     #[serde(rename = "ai-title")]
     AiTitle(AiTitleEntry),
 
+    /// The name the person gave the session. Outranks `ai-title`.
+    #[serde(rename = "custom-title")]
+    CustomTitle(CustomTitleEntry),
+
     /// The last prompt text. Lean metadata.
     #[serde(rename = "last-prompt")]
     LastPrompt(FlatValueEntry),
@@ -408,6 +412,12 @@ pub struct AttachmentEntry {
 ///
 /// The wire field is `aiTitle`; renamed here so the header bar gets a real
 /// value (without the rename the title silently stays `None`).
+#[derive(Debug, Clone, Deserialize)]
+pub struct CustomTitleEntry {
+    #[serde(rename = "customTitle", default)]
+    pub title: Option<String>,
+}
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct AiTitleEntry {
     #[serde(rename = "aiTitle", default)]

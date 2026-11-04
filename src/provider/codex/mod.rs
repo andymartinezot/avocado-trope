@@ -263,6 +263,17 @@ impl Stream {
                                 dedup: None,
                             }));
                         }
+                        // The last request's prompt is the context in use.
+                        let used = info
+                            .as_ref()
+                            .and_then(|i| i.last_token_usage.as_ref())
+                            .and_then(|u| u.input_tokens);
+                        if let Some(used) = used.filter(|u| *u > 0) {
+                            out.push(by(FactKind::Context {
+                                used,
+                                window: info.as_ref().and_then(|i| i.model_context_window),
+                            }));
+                        }
                     }
                     EventMsg::ThreadSettingsApplied { thread_settings } => {
                         if let Some(model) = thread_settings.as_ref().and_then(|s| s.model.clone())

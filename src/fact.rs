@@ -77,6 +77,10 @@ pub enum FactKind {
     /// turn's usage across several records (Claude's `requestId`); `None` sums
     /// every fact as its own delta.
     Tokens { output: u64, dedup: Option<String> },
+    /// Tokens in the agent's context as of its latest model request: the whole
+    /// prompt the model last read, cached parts included. Latest wins.
+    /// `window` is the model's context limit when the format states it.
+    Context { used: u64, window: Option<u64> },
     /// A human prompt on this agent's thread. An era boundary. Providers emit it
     /// only for text a person typed; injected text is not a prompt.
     Prompt(String),
@@ -159,6 +163,7 @@ impl FactKind {
             FactKind::Label { .. } => "Label",
             FactKind::Model(_) => "Model",
             FactKind::Tokens { .. } => "Tokens",
+            FactKind::Context { .. } => "Context",
             FactKind::Prompt(_) => "Prompt",
             FactKind::Reasoning(_) => "Reasoning",
             FactKind::ToolStart { .. } => "ToolStart",

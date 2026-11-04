@@ -345,11 +345,15 @@ pub struct TokenInfo {
     /// unchanged total, so the total is what the provider diffs.
     pub total_token_usage: Option<TokenUsage>,
     pub last_token_usage: Option<TokenUsage>,
+    /// The model's context limit.
+    pub model_context_window: Option<u64>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct TokenUsage {
     pub output_tokens: Option<u64>,
+    /// The request's whole prompt, cached tokens included.
+    pub input_tokens: Option<u64>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
