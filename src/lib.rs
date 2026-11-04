@@ -15,7 +15,7 @@
 //! ## The library
 //!
 //! The portable core behind both the native frontend
-//! (the `zoe` terminal app, `src/main.rs`) and the browser frontend (the
+//! (the `avocado-trope` terminal app, `src/main.rs`) and the browser frontend (the
 //! `zoetrope-web` crate at `web/wasm/`, which depends on this one with default
 //! features off).
 //!
@@ -38,7 +38,7 @@ pub mod ui;
 // The native frontend: terminal loop + crossterm input.
 //
 // Frontend plumbing, with no stability promise. These are public because the
-// `zoe` binary is a separate crate that links this one, not because they are an
+// `avocado-trope` binary is a separate crate that links this one, not because they are an
 // interface to build on: they may change shape in any release. The parts meant
 // to be depended on are the domain and the vocabulary above.
 #[cfg(feature = "native")]

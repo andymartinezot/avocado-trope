@@ -673,7 +673,7 @@ mod tests {
         assert_eq!(s.files.len() + s.rejected.len(), near);
     }
 
-    /// The shipped fixtures, opened by path the way `zoe <file>` does: the
+    /// The shipped fixtures, opened by path the way `avocado-trope <file>` does: the
     /// provider comes from the content, every file of the session is found,
     /// and a child file opens the same session as its root.
     #[test]

@@ -11,7 +11,7 @@
 # Herdr's Claude Code and Codex integrations report the native session id from
 # a SessionStart hook (`pane.report_agent_session`), so `pane.get` carries
 # `agent_session: {source, agent, kind: "id", value}` for both. That pair is
-# all zoe needs. Nothing is guessed from the working directory; when Herdr has
+# all avocado-trope needs. Nothing is guessed from the working directory; when Herdr has
 # no id, the caller says so.
 set -euo pipefail
 
@@ -37,7 +37,7 @@ value=$(printf '%s' "$pane" | jq -r '.agent_session.value // empty')
 case "$agent" in
   claude | codex) ;;
   "") echo "pane $pane_id has no agent: focus a Claude Code or Codex pane" >&2; exit 1 ;;
-  *)  echo "agent '$agent' in pane $pane_id is not one zoe reads (Claude Code and Codex)" >&2; exit 1 ;;
+  *)  echo "agent '$agent' in pane $pane_id is not one avocado-trope reads (Claude Code and Codex)" >&2; exit 1 ;;
 esac
 
 case "$kind" in

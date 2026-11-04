@@ -1,6 +1,6 @@
 //! Fleet view: every agent Herdr knows about, on one screen.
 //!
-//! `zoe fleet` asks Herdr who is running (`herdr agent list`, a few ms), and
+//! `avocado-trope fleet` asks Herdr who is running (`herdr agent list`, a few ms), and
 //! follows each agent's transcript to fill in what Herdr doesn't know: model,
 //! context, the last tool, failures, files, whether it is stuck.
 //!

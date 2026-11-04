@@ -2,7 +2,7 @@
 //!
 //! Draws only when something changed (a new snapshot, a key, a click), so an
 //! idle fleet costs nothing between polls. `g` hands the terminal to a child
-//! `zoe` on the selected session; input is read on a thread that can be paused
+//! `avocado-trope` on the selected session; input is read on a thread that can be paused
 //! for it, since two readers on one terminal would each lose keys.
 
 use std::collections::BTreeMap;
@@ -680,7 +680,7 @@ fn draw_help(frame: &mut Frame, area: Rect) {
     );
 }
 
-/// Run a child `zoe` on this row's session, sharing the terminal.
+/// Run a child `avocado-trope` on this row's session, sharing the terminal.
 fn open_graph(row: &Row) -> Result<(), String> {
     let exe = std::env::current_exe().map_err(|e| e.to_string())?;
     let mut cmd = std::process::Command::new(exe);

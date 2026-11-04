@@ -14,10 +14,10 @@ Set TypingSpeed 80ms
 # Hide the launch: open on the app, with a throwaway config so `t` leaves the
 # real remembered theme alone.
 Hide
-Type "export XDG_CONFIG_HOME=$(mktemp -d); unset HERDR_PANE_ID ZOE_THEME; clear"
+Type "export XDG_CONFIG_HOME=$(mktemp -d); unset HERDR_PANE_ID AVOCADO_TROPE_THEME; clear"
 Enter
 Sleep 500ms
-Type "./target/release/zoe fleet --demo assets/fleet/demo.json --interval 2"
+Type "./target/release/avocado-trope fleet --demo assets/fleet/demo.json --interval 2"
 Enter
 Show
 

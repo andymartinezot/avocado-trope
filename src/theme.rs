@@ -8,7 +8,7 @@
 //! *what state* it is in. Selection keeps its own accent so it never reads as
 //! a role or a state.
 //!
-//! Portable (native + wasm): no IO here. Reading `--theme`, `$ZOE_THEME` or
+//! Portable (native + wasm): no IO here. Reading `--theme`, `$AVOCADO_TROPE_THEME` or
 //! Herdr's config happens in the native frontend, which hands a name to
 //! [`set_by_name`].
 
@@ -40,7 +40,7 @@ pub struct Roles {
 /// A complete theme.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Look {
-    /// Name used by `--theme`, `$ZOE_THEME` and the status bar.
+    /// Name used by `--theme`, `$AVOCADO_TROPE_THEME` and the status bar.
     pub id: &'static str,
     pub palette: Palette,
     pub roles: Roles,

@@ -30,7 +30,7 @@ path = "src/main.rs"
 # The portable core: model, timeline, graph, UI rendering, parsing. Default
 # features off drops the native frontend (tokio/crossterm/fs), which has no
 # meaning in a browser.
-zoetrope = { path = "../..", default-features = false }
+zoetrope = { package = "avocado-trope", path = "../..", default-features = false }
 # ratatui's wasm WebGl2 backend + mouse/key events.
 ratzilla = "0.3.1"
 # `ratzilla` feature: the ratzilla -> rataflow event `From` impls and

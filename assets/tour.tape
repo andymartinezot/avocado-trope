@@ -13,7 +13,7 @@
 # The waypoints are read off the live layout at the moment `t` lands, so they
 # survive a relayout. Sleep below must be at least the script's own length,
 # which the binary reports and ./assets/build.sh check verifies:
-#     ZOETROPE_DEMO=duration target/release/zoe
+#     ZOETROPE_DEMO=duration target/release/avocado-trope
 # A short sleep means a
 # trailing still frame is the worst thing in a looping recording.
 # Two Outputs, one render. The MP4 is for the website and the GIF for the
@@ -36,7 +36,7 @@ Hide
 Type "clear"
 Enter
 Sleep 1s
-Type "ZOETROPE_DEMO=1 ./target/release/zoe assets/claude/demo.jsonl --speed 60"
+Type "ZOETROPE_DEMO=1 ./target/release/avocado-trope assets/claude/demo.jsonl --speed 60"
 Enter
 Sleep 5s
 Show

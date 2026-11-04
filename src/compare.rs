@@ -1,4 +1,4 @@
-//! `zoe compare <a> <b>`: two sessions side by side, replaying on one clock.
+//! `avocado-trope compare <a> <b>`: two sessions side by side, replaying on one clock.
 //!
 //! Each side is an ordinary [`App`] drawn into half the screen, started from
 //! its own first record at the same speed, so at any moment both show the same

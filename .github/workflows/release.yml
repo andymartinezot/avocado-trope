@@ -1,0 +1,78 @@
+# Push a vX.Y.Z tag to publish binaries and SHA256SUMS. The tag must match the
+# version in Cargo.toml and herdr-plugin/herdr-plugin.toml, because the plugin's
+# build step builds its download URL from its own version.
+name: Release
+
+on:
+  push:
+    tags: ["v*.*.*"]
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  versions:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: The tag matches both manifests
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          crate=$(sed -n 's/^version *= *"\([^"]*\)".*/\1/p' Cargo.toml | head -n 1)
+          plugin=$(sed -n 's/^version *= *"\([^"]*\)".*/\1/p' herdr-plugin/herdr-plugin.toml | head -n 1)
+          echo "tag $tag, Cargo.toml $crate, plugin $plugin"
+          [ "$tag" = "$crate" ] && [ "$tag" = "$plugin" ]
+
+  build:
+    needs: versions
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - { os: macos-latest, rust: aarch64-apple-darwin, asset: darwin_arm64 }
+          - { os: macos-latest, rust: x86_64-apple-darwin, asset: darwin_amd64 }
+          - { os: ubuntu-latest, rust: x86_64-unknown-linux-musl, asset: linux_amd64 }
+          - { os: ubuntu-24.04-arm, rust: aarch64-unknown-linux-musl, asset: linux_arm64 }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Toolchain
+        run: |
+          rustup update stable --no-self-update
+          rustup default stable
+          rustup target add ${{ matrix.rust }}
+      - name: musl
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y musl-tools
+      - name: Build
+        run: cargo build --release --locked --target ${{ matrix.rust }}
+      - name: Name the asset
+        run: |
+          mkdir dist
+          cp target/${{ matrix.rust }}/release/avocado-trope dist/avocado-trope_${{ matrix.asset }}
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ${{ matrix.asset }}
+          path: dist/*
+          if-no-files-found: error
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Checksums
+        working-directory: dist
+        run: sha256sum avocado-trope_* > SHA256SUMS && cat SHA256SUMS
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" dist/* --repo "$GITHUB_REPOSITORY" --title "$GITHUB_REF_NAME" --generate-notes

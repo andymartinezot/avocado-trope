@@ -25,7 +25,7 @@ Hide
 Type "clear"
 Enter
 Sleep 1s
-Type "./target/release/zoe assets/codex/cli-0.153.4/2026/09/07/rollout-2026-09-07T16-25-14-01a07c0b-5e16-70f2-ad21-7c2a3a228b22.jsonl --speed 12"
+Type "./target/release/avocado-trope assets/codex/cli-0.153.4/2026/09/07/rollout-2026-09-07T16-25-14-01a07c0b-5e16-70f2-ad21-7c2a3a228b22.jsonl --speed 12"
 Enter
 Show
 

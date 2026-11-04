@@ -2,13 +2,13 @@
 
 A bridge, not a second frontend. [Herdr](https://herdr.dev) already knows which
 agent occupies a pane and the native id of the session running there, which is
-the pair `zoe` would otherwise have to infer. The plugin asks for it and hands
+the pair `avocado-trope` would otherwise have to infer. The plugin asks for it and hands
 it over. The user-facing half is [`herdr-plugin/README.md`](../herdr-plugin/README.md);
 this is the rest.
 
 It lives in `herdr-plugin/`, ships by git clone rather than with the crate, and
 is a manifest plus three shell scripts. Herdr plugin panes run an ordinary argv
-command in a real TTY, so `zoe` itself is the plugin UI. Nothing is embedded in
+command in a real TTY, so `avocado-trope` itself is the plugin UI. Nothing is embedded in
 Herdr's render loop, and nothing about the graph is written twice.
 
 ---
@@ -25,7 +25,7 @@ never learns a layout, and never guesses a project from a working directory. It
 resolves one pair, `(agent, session id)`, and spends it on one command:
 
 ```
-zoe --provider <agent> --follow <id>
+avocado-trope --provider <agent> --follow <id>
 ```
 
 `--provider` narrows the lookup to the agent Herdr named. `--follow` is right
@@ -36,10 +36,10 @@ by definition here, since the pane's agent is running.
 | Script | Role |
 |---|---|
 | `herdr/pane.sh` | all three actions (`open`, `open-split`, `open-tab`), differing only in the placement they pass. Opens the graph pane, or closes it when the graph is the focused pane, which is what makes the key a toggle |
-| `herdr/open.sh` | the pane command. Resolves the session and execs `zoe` |
+| `herdr/open.sh` | the pane command. Resolves the session and execs `avocado-trope` |
 | `herdr/resolve.sh` | asks `pane.get` about the focused pane, prints `<agent> <session-id>`, or exits with the reason |
 | `herdr/keys.sh` | the `setup-keys` / `remove-keys` actions |
-| `herdr/ensure-zoe.sh` | the `[[build]]` step: is a usable `zoe` on `PATH` |
+| `herdr/ensure-zoe.sh` | the `[[build]]` step: is a usable `avocado-trope` on `PATH` |
 
 Two decisions in there are worth keeping.
 
@@ -89,7 +89,7 @@ release:
 |---|---|---|
 | `version` | `herdr-plugin.toml` | the files in `herdr-plugin/` change. Displayed by Herdr, resolved by nothing |
 | `min_herdr_version` | `herdr-plugin.toml` | a script starts using a newer Herdr API. The only one that can block an install |
-| `ZOE_SINCE` | `herdr/ensure-zoe.sh` | the `zoe` command line the scripts call changes. A label for the error message, not a check |
+| `ZOE_SINCE` | `herdr/ensure-zoe.sh` | the `avocado-trope` command line the scripts call changes. A label for the error message, not a check |
 
 `herdr plugin install` clones the repo at its default branch (or at `--ref`), so
 what people get is main, and reinstalling is how it updates. There is no
@@ -98,19 +98,19 @@ registry, no tag resolution and no `plugin update`.
 **Why the manifest version does not mirror the crate.** Plugins that keep the
 two in step have a reason to: their installer builds a release download URL out
 of the version, because the plugin is how their binary is distributed. Nothing
-here downloads anything. `zoe` reaches people through Homebrew and crates.io,
+here downloads anything. `avocado-trope` reaches people through Homebrew and crates.io,
 and the bridge drives whatever is on `PATH`, so a mirrored number would be a
 hand-edited label with no reader, touched on every release including the ones
 that never came near this directory.
 
 **Why the binary is gated on capability, not version.** The build step asks
-`zoe --help` whether it takes `--provider`. A version string is a label: a
+`avocado-trope --help` whether it takes `--provider`. A version string is a label: a
 binary built from a checkout carries the crate version of its base release, so
-a floor would refuse a `zoe` that has the flag, while a future release that
+a floor would refuse a `avocado-trope` that has the flag, while a future release that
 renamed the flag would pass a floor and then fail at the first key press.
 
 **The one rule tying the two release channels together.** A script here may only
-call a `zoe` command line that is already published, because installs take the
+call a `avocado-trope` command line that is already published, because installs take the
 branch while the binary comes from a release. Calling something unreleased would
 break every fresh install until the crate ships.
 
@@ -145,7 +145,7 @@ socket docs at v0.9.0, and live responses.
 ## 6. Working on it
 
 ```bash
-herdr plugin link "$(pwd)/herdr-plugin"        # link runs no build step: have zoe on PATH
+herdr plugin link "$(pwd)/herdr-plugin"        # link runs no build step: have avocado-trope on PATH
 herdr plugin action list --plugin furkankly.zoetrope
 herdr plugin log list --plugin furkankly.zoetrope   # where an action's output goes
 herdr pane list | jq '.result.panes[] | {pane_id, agent, agent_session}'

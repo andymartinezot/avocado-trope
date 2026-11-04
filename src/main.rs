@@ -3,18 +3,18 @@
 //! CLI (hand-rolled over `std::env::args`, no clap):
 //!
 //! ```text
-//! zoe                       follow the current project's live session
-//! zoe <file.jsonl>          replay a recording, played from the start
-//! zoe <id>                  replay a session by id (or a unique prefix)
-//! zoe <dir>                 follow another project's live session
-//! zoe <file> --follow       follow a file's live edge instead of replaying
-//! zoe <file> --speed N      playback speed multiplier (default 8.0)
-//! zoe --provider <name> ... force the transcript format instead of detecting it
-//! zoe --theme <name> ...    color theme (also $ZOE_THEME, or Herdr's theme)
-//! zoe inspect <file|id|dir> headless: print the session tree + info
-//! zoe inspect --json|--markdown <target>   the same as data, for scripts and PRs
-//! zoe fleet                 every agent Herdr knows about, on one screen
-//! zoe compare <a> <b>       two sessions side by side on one clock
+//! avocado-trope                       follow the current project's live session
+//! avocado-trope <file.jsonl>          replay a recording, played from the start
+//! avocado-trope <id>                  replay a session by id (or a unique prefix)
+//! avocado-trope <dir>                 follow another project's live session
+//! avocado-trope <file> --follow       follow a file's live edge instead of replaying
+//! avocado-trope <file> --speed N      playback speed multiplier (default 8.0)
+//! avocado-trope --provider <name> ... force the transcript format instead of detecting it
+//! avocado-trope --theme <name> ...    color theme (also $AVOCADO_TROPE_THEME, or Herdr's theme)
+//! avocado-trope inspect <file|id|dir> headless: print the session tree + info
+//! avocado-trope inspect --json|--markdown <target>   the same as data, for scripts and PRs
+//! avocado-trope fleet                 every agent Herdr knows about, on one screen
+//! avocado-trope compare <a> <b>       two sessions side by side on one clock
 //! ```
 
 use std::path::PathBuf;
@@ -48,7 +48,7 @@ pub enum Cli {
         follow: bool,
         speed: f64,
         provider: Option<Provider>,
-        /// `--theme`: wins over `$ZOE_THEME` and Herdr's theme.
+        /// `--theme`: wins over `$AVOCADO_TROPE_THEME` and Herdr's theme.
         theme: Option<String>,
     },
     /// Headless: parse and print the session tree + info; no TUI. The target
@@ -90,31 +90,38 @@ pub enum Format {
 const DEFAULT_REPLAY_SPEED: f64 = 8.0;
 
 const USAGE: &str = "\
-zoetrope — visualize coding-agent sessions as a flow graph
+avocado-trope — watch coding agents as a flow graph
 
 USAGE:
-    zoe                     follow the current project's live session
-    zoe <file.jsonl>        replay a recording, played from the start
-    zoe <id>                replay a session by id, or a unique prefix of one
-    zoe <dir>               follow another project's live session
-    zoe <file> --follow     follow a file's live edge instead of replaying
-    zoe <file> --speed N    playback speed (default 8.0)
-    zoe --provider <name>   force the format (claude, codex) instead of detecting it
-    zoe --theme <name>      color theme: dracula (default), catppuccin, tokyo-night,
-                            gruvbox, nord, classic, terminal. Also $ZOE_THEME. Press t
-                            to switch; the choice is remembered. Inside Herdr it
-                            follows Herdr's theme until you pick one.
-    zoe --theme list        print the theme names
-    zoe inspect <file|id>   headless: print the session tree + info
-        --json, --markdown  the same as data; contains prompts, paths and errors
-    zoe fleet               every agent in Herdr on one screen
-        --interval N        seconds between polls (default 2)
-        --notify            Herdr notification when an agent starts needing you
-        --json              print one snapshot and exit
-    zoe compare <a> <b>     two sessions side by side, replaying on one clock
-    --stuck-after N         flag a tool call open this many minutes (default 5)
-    --context-window N      tokens to assume when the transcript doesn't say
-    zoe --version           print the version and exit
+    avocado-trope                  follow the current project's live session
+    avocado-trope <file.jsonl>     replay a recording, played from the start
+    avocado-trope <id>             replay a session by id, or a unique prefix of one
+    avocado-trope <dir>            follow another project's live session
+    avocado-trope fleet            every agent in Herdr on one screen
+    avocado-trope compare <a> <b>  two sessions side by side, on one clock
+    avocado-trope inspect <target> headless: print the session tree + info
+
+SESSIONS:
+    --follow               follow a file's live edge instead of replaying
+    --speed N              playback speed (default 8.0)
+    --provider <name>      force the format (claude, codex) instead of detecting it
+
+FLEET:
+    --interval N           seconds between polls (default 2)
+    --notify               Herdr notification when an agent starts needing you
+    --json                 print one snapshot and exit
+
+INSPECT:
+    --json, --markdown     as data; contains prompts, paths and errors
+
+EVERYWHERE:
+    --theme <name|list>    dracula (default), catppuccin, tokyo-night, gruvbox, nord,
+                           classic, terminal. Also $AVOCADO_TROPE_THEME. Press t to
+                           switch; the choice is remembered. Inside Herdr it follows
+                           Herdr's theme until you pick one.
+    --stuck-after N        flag a tool call quiet for this many minutes (default 5)
+    --context-window N     tokens to assume when the transcript doesn't say
+    --version              print the version and exit
 
 Once open, scrub/follow/pause/go-live are available no matter how you launched.";
 
@@ -285,9 +292,9 @@ fn parse_cli(args: impl Iterator<Item = String>) -> Result<Cli> {
                 std::process::exit(0);
             }
             // Packaging depends on this: the Homebrew formula's `test do`
-            // block runs `zoe --version`, and it has to exit 0.
+            // block runs `avocado-trope --version`, and it has to exit 0.
             "-V" | "--version" => {
-                println!("zoe {}", env!("CARGO_PKG_VERSION"));
+                println!("avocado-trope {}", env!("CARGO_PKG_VERSION"));
                 std::process::exit(0);
             }
             "--follow" => follow = true,
@@ -390,7 +397,7 @@ async fn run_inspect(target: String, provider: Option<Provider>, format: Format)
     Ok(())
 }
 
-/// Run `zoe fleet`: a poller publishing rows, and a screen drawing them.
+/// Run `avocado-trope fleet`: a poller publishing rows, and a screen drawing them.
 async fn run_fleet(
     theme: Option<String>,
     interval: u64,
@@ -455,7 +462,7 @@ async fn start_session(
     })
 }
 
-/// Run `zoe compare`.
+/// Run `avocado-trope compare`.
 async fn run_compare(a: String, b: String, speed: f64, theme: Option<String>) -> Result<()> {
     pick_theme(theme);
     load_herdr_keys();
@@ -525,7 +532,7 @@ async fn run_tui(cli: Cli) -> Result<()> {
 /// What a positional argument means: an existing file is a session's file, an
 /// existing directory is a project to follow, anything shaped like a path
 /// that does not exist is a typo, and the rest is a session id or a prefix
-/// of one. Shared by `zoe <target>` and `zoe inspect <target>`.
+/// of one. Shared by `avocado-trope <target>` and `avocado-trope inspect <target>`.
 fn resolve_target(arg: String) -> Result<Target> {
     let path = PathBuf::from(&arg);
     if path.is_file() {
@@ -540,12 +547,14 @@ fn resolve_target(arg: String) -> Result<Target> {
     Ok(Target::Id(arg))
 }
 
-/// Choose the launch theme: `--theme`, else `$ZOE_THEME`, else the theme you
+/// Choose the launch theme: `--theme`, else `$AVOCADO_TROPE_THEME`, else the theme you
 /// last switched to with `t`, else Herdr's theme when running inside a Herdr
 /// pane, else the default. A name we don't know
 /// (an env value, or a Herdr theme with no counterpart) keeps the default.
 fn pick_theme(flag: Option<String>) {
-    let env = std::env::var("ZOE_THEME").ok().filter(|v| !v.is_empty());
+    let env = ["AVOCADO_TROPE_THEME", "ZOE_THEME"]
+        .iter()
+        .find_map(|name| std::env::var(name).ok().filter(|v| !v.is_empty()));
     let herdr = || {
         std::env::var_os("HERDR_PANE_ID")?;
         herdr_theme(&read_capped(&herdr_config_path()?)?)
@@ -810,7 +819,7 @@ command = "herdr plugin pane open --plugin andymartinezot.avocado-trope --entryp
 
     fn cli(args: &[&str]) -> Result<Cli> {
         // parse_cli skips argv[0], so prepend a fake program name.
-        let mut v = vec!["zoe".to_string()];
+        let mut v = vec!["avocado-trope".to_string()];
         v.extend(args.iter().map(|s| s.to_string()));
         parse_cli(v.into_iter())
     }

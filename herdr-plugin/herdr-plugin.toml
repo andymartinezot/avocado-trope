@@ -1,19 +1,9 @@
 id = "andymartinezot.avocado-trope"
 name = "avocado-trope"
-# This versions the bridge in this directory, not zoetrope. The scripts here
-# launch `zoe`; the graph, and every improvement to it, arrives with the binary
-# through Homebrew and crates.io, on its own release schedule and without any
-# change here. So this number moves when these files move, and stays put
-# through a zoe release that leaves the command line alone.
-#
-# Herdr displays it and nothing reads it. Plugins that do keep it in step with
-# their tool have a reason to: their installer builds a release download URL
-# out of it. Nothing here downloads anything, so a mirrored number would be a
-# hand-edited label with no reader. The one version that gates an install is
-# min_herdr_version below; the one that describes what `zoe` must be able to do
-# lives in herdr/ensure-zoe.sh.
-version = "0.1.0"
-description = "Watch the focused agent's session as a live flow graph."
+# The build step downloads the release matching this version, so it moves with
+# Cargo.toml's. The release workflow refuses a tag where the three disagree.
+version = "0.3.0"
+description = "Watch the focused agent's session as a live flow graph, or every agent on one screen."
 platforms = ["macos", "linux"]
 
 # `agent_session` on pane.get / agent.get is what makes this plugin worth having:
@@ -22,10 +12,10 @@ platforms = ["macos", "linux"]
 # release the field was read from (`herdr api schema --json`, protocol 20).
 min_herdr_version = "0.8.2"
 
-# `plugin install` runs this after the preview; `plugin link` does not. It only
-# checks for zoe, and installs it when missing.
+# `plugin install` runs this after the preview; `plugin link` does not. It downloads
+# a checksum-verified release, or builds from source when it can't.
 [[build]]
-command = ["bash", "herdr/ensure-zoe.sh"]
+command = ["sh", "herdr/fetch-or-build.sh"]
 
 # Overlay: a temporary zoomed pane that restores the previous focus and zoom when
 # it closes. Watching the graph is a peek, not a side-by-side workflow. Users who

@@ -16,14 +16,14 @@
 One TUI command over the unified timeline engine (see the **Timeline** section) plus the headless `inspect`. The launch only picks **defaults** — *what* to open and *where the playhead starts*; once open, scrub / follow / pause / go-live all work regardless.
 
 ```
-zoe                      # follow the current project's live session
-zoe <file.jsonl>         # replay a recording, played from the start (any provider's file)
-zoe <id>                 # replay a session by id, or a unique prefix, across providers
-zoe <dir>                # follow another project's live session
-zoe <file> --follow      # ride a file's live edge instead of replaying it
-zoe <file> --speed 8     # playback speed (default 8.0)
-zoe --provider codex ... # force the format instead of reading it off the content
-zoe inspect <file|id>    # no TUI: print session info + parsed tree (smoke-test)
+avocado-trope                      # follow the current project's live session
+avocado-trope <file.jsonl>         # replay a recording, played from the start (any provider's file)
+avocado-trope <id>                 # replay a session by id, or a unique prefix, across providers
+avocado-trope <dir>                # follow another project's live session
+avocado-trope <file> --follow      # ride a file's live edge instead of replaying it
+avocado-trope <file> --speed 8     # playback speed (default 8.0)
+avocado-trope --provider codex ... # force the format instead of reading it off the content
+avocado-trope inspect <file|id>    # no TUI: print session info + parsed tree (smoke-test)
 ```
 
 Resolution goes through `provider::open` (see [DISCOVERY.md](DISCOVERY.md)): a **file** is `Target::Path` and bulk-loads + tails (replay feeder), the provider read off its first record; an **id** is `Target::Id`, looked up across every provider's roots; a **dir** (or none → cwd) is `Target::Here` and follows the newest session of that project, any provider. `--follow` only changes the start position (head vs beginning) via `Mode`. `Cli = View { target: Option<String>, follow: bool, speed: f64, provider: Option<Provider> } | Inspect { file, provider }`. Arg parsing: hand-rolled over `std::env::args` (no clap; keep deps lean).
@@ -40,9 +40,9 @@ Two lockfiles means the two frontends can drift apart. Most of that drift is har
 
 ```text
 Cargo.toml          # [workspace] exclude = ["web/wasm"]  — its own workspace, own lockfile
-src/                # the zoetrope library + the `zoe` bin (src/main.rs)
+src/                # the zoetrope library + the `avocado-trope` bin (src/main.rs)
 web/wasm/           # the zoetrope-web crate: Cargo.toml, index.html (trunk entry), src/main.rs
-herdr-plugin/       # the Herdr plugin: a manifest and shell scripts that launch `zoe`; ships by git clone, not with the crate
+herdr-plugin/       # the Herdr plugin: a manifest and shell scripts that launch `avocado-trope`; ships by git clone, not with the crate
 ```
 
 ## Dependencies (Cargo.toml)
@@ -81,7 +81,7 @@ critical-section = { features = ["std"] }                  # ratatui's layout-ca
 getrandom (0.3) + getrandom_v04 (0.4)                      # both, wasm_js backend (pulled via ratzilla)
 ```
 
-**One binary per crate:** `zoe` → `src/main.rs` (`required-features = ["native"]`), the only thing `cargo install zoetrope` puts on your PATH; `web` → `web/wasm/src/main.rs`, built by trunk (`web/scripts/build-wasm.sh`) into `web.js` / `web_bg.wasm`. No network deps anywhere (hard constraint #1).
+**One binary per crate:** `avocado-trope` → `src/main.rs` (`required-features = ["native"]`), the only thing `cargo install zoetrope` puts on your PATH; `web` → `web/wasm/src/main.rs`, built by trunk (`web/scripts/build-wasm.sh`) into `web.js` / `web_bg.wasm`. No network deps anywhere (hard constraint #1).
 
 ## Module map
 
@@ -330,7 +330,7 @@ The crossterm input channel is **unbounded** (input must never block); the **cap
 
 ## inspect subcommand
 
-`zoe inspect <file|id>`: open the session (`provider::open`, any provider, any file of it, or an id), fold every file, and print: session title, **session info** (the provider's labelled rows: mode · permission · queued · file edits · last prompt for Claude; app · version · cwd for Codex), agent/tool totals, then the agent tree (type, description, status, #tools, tokens). Exit non-zero on an unreadable or unrecognised file. **This is the headless smoke test** — CI-runnable end-to-end check of parser + session model + info extraction with no TTY.
+`avocado-trope inspect <file|id>`: open the session (`provider::open`, any provider, any file of it, or an id), fold every file, and print: session title, **session info** (the provider's labelled rows: mode · permission · queued · file edits · last prompt for Claude; app · version · cwd for Codex), agent/tool totals, then the agent tree (type, description, status, #tools, tokens). Exit non-zero on an unreadable or unrecognised file. **This is the headless smoke test** — CI-runnable end-to-end check of parser + session model + info extraction with no TTY.
 
 ## Testing (inline #[cfg(test)], no tests/ dir)
 

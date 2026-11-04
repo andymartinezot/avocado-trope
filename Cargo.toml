@@ -12,13 +12,13 @@
 exclude = ["web/wasm"]
 
 [package]
-name = "zoetrope"
-version = "0.2.0"
+name = "avocado-trope"
+version = "0.3.0"
 edition = "2024"
 # Inherited from ratatui 0.30, which is the floor: nothing in this crate's own
 # source needs anything newer. Verified by the `msrv` job in CI.
 rust-version = "1.88"
-description = "Terminal UI that visualizes Claude Code and Codex agent sessions as a live flow graph."
+description = "Watch Claude Code and Codex agents: a session as a live flow graph, or every herdr agent on one screen. A fork of zoetrope."
 license = "MIT"
 readme = "README.md"
 repository = "https://github.com/andymartinezot/avocado-trope"
@@ -98,9 +98,13 @@ imbl = "7.0.1"
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 chrono = { version = "0.4", features = ["wasmbind"] }
 
+# The library keeps upstream's name, so merging upstream work stays cheap.
+[lib]
+name = "zoetrope"
+path = "src/lib.rs"
+
 [[bin]]
-# The crate is `zoetrope`; the command you type is `zoe`.
-name = "zoe"
+name = "avocado-trope"
 path = "src/main.rs"
 # Native terminal binary — skipped by a `--no-default-features` build.
 required-features = ["native"]

@@ -1,4 +1,4 @@
-//! `zoe inspect --json` and `--markdown`: a session as data, for scripts and
+//! `avocado-trope inspect --json` and `--markdown`: a session as data, for scripts and
 //! for pasting into a PR. Built from the same fold as the graph.
 //!
 //! These contain what the session contains: prompts, file paths, tool

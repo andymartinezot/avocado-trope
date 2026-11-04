@@ -62,7 +62,7 @@ the recording mid-gesture. The length now lives only in the `Step` list, and the
 binary reports it:
 
 ```bash
-ZOETROPE_DEMO=duration target/release/zoe   # -> 10.80
+ZOETROPE_DEMO=duration target/release/avocado-trope   # -> 10.80
 ```
 
 `tour_steps` is separated from the `TourMarks` it aims at so this can be
@@ -222,7 +222,7 @@ choice, not a shortcut:
 - **It is also a test** — `demo_session_conforms` (`src/provider/claude/mod.rs`)
   discovers it the way a live session is discovered and checks order invariance
   plus the two goldens beside it, `demo.model.txt` and `demo.timeline.txt`
-  (regenerate with `UPDATE_GOLDEN=1`). `zoe inspect assets/claude/demo.jsonl`
+  (regenerate with `UPDATE_GOLDEN=1`). `avocado-trope inspect assets/claude/demo.jsonl`
   prints the same model view by hand. It is what caught the
   `assets/subagents/` path bug and the wasm workflow gap.
 

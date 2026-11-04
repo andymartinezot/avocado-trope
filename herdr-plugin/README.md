@@ -1,7 +1,7 @@
 # zoetrope in Herdr
 
 [Herdr](https://herdr.dev) runs coding agents in panes and knows which session
-each pane is running. This plugin asks it, then opens that session in `zoe` as
+each pane is running. This plugin asks it, then opens that session in `avocado-trope` as
 a live flow graph, without you naming a file or an id. Claude Code and Codex
 panes both work.
 
@@ -20,9 +20,9 @@ and the plugin has nothing to open. An agent already running when you install
 it never reports one, so start it again. `herdr integration status` lists what
 is installed.
 
-**The plugin install** checks that a `zoe` new enough to open a session by id
+**The plugin install** checks that a `avocado-trope` new enough to open a session by id
 is on `PATH`, and installs one with Homebrew or cargo when it is missing. An
-older `zoe` is reported with the upgrade commands, never replaced. `jq` is
+older `avocado-trope` is reported with the upgrade commands, never replaced. `jq` is
 needed as well.
 
 **The key step** writes one marked block into your Herdr config, since plugins

@@ -3,6 +3,7 @@
 <h1 align="center">avocado-trope</h1>
 
 <p align="center">
+  <a href="https://github.com/andymartinezot/avocado-trope/releases/latest"><img src="https://img.shields.io/github/v/release/andymartinezot/avocado-trope" alt="Latest release"></a>
   <a href="https://github.com/furkankly/zoetrope"><img src="https://img.shields.io/badge/fork%20of-zoetrope-d7af00" alt="Fork of zoetrope"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue" alt="MIT license"></a>
   <a href="https://github.com/andymartinezot/avocado-trope"><img src="https://img.shields.io/github/stars/andymartinezot/avocado-trope?style=social" alt="GitHub stars"></a>
@@ -15,7 +16,8 @@ See who is working, who is stuck, what failed and how full each context is, with
 > [furkankly](https://github.com/furkankly), which does the hard part: reading the transcripts and
 > drawing the graph. The intention here is to improve on it: a clearer look, more of what a session
 > records on screen, and tools for running many agents at once. All credit for the original goes
-> to its author. See [What this fork adds](#what-this-fork-adds).
+> to its author. See [What this fork adds](#what-this-fork-adds). It's a standalone repository
+> rather than a GitHub fork only because herdr's plugin marketplace skips forks.
 
 | | |
 |---|---|
@@ -96,36 +98,21 @@ All recordings use the demo sessions in [`assets/`](assets), so they never show 
 
 ## Quick start
 
-You need [Rust](https://rustup.rs) 1.88 or newer. There are no release binaries yet.
-
-```sh
-git clone https://github.com/andymartinezot/avocado-trope
-cd avocado-trope
-cargo build --release
-./target/release/zoe assets/claude/demo.jsonl    # the bundled demo session
-```
-
-The binary is still called `zoe`, so it works with what zoetrope's herdr bridge expects. To use it
-anywhere, run `cargo install --path .`. If upstream's `zoe` is also installed, check which one comes
-first on your `PATH`.
-
-```sh
-zoe                 # follow the live session of the current folder
-zoe <id>            # replay a session by id, or a unique prefix of one
-zoe <file.jsonl>    # replay a session file
-zoe fleet           # every agent in herdr
-```
-
 ### With herdr
 
-Link the plugin from your clone. Its panes run `target/release/zoe` from that same clone, so a new
-`cargo build --release` is all an update needs.
-
 ```sh
-herdr plugin link herdr-plugin
+herdr plugin install andymartinezot/avocado-trope/herdr-plugin
 herdr integration install claude    # so herdr knows each pane's session id
 herdr integration install codex     # optional, for Codex
 ```
+
+The install downloads a checksum-verified binary for macOS or Linux (arm64 or amd64). If it can't,
+it builds from source when [Rust](https://rustup.rs) is installed.
+
+> **What you're trusting:** release binaries are built by GitHub Actions from this repository
+> (actions pinned to commit SHAs). The install downloads over HTTPS and checks the sha256 published
+> with the release, which catches corrupted downloads; the trust root is GitHub and this repository.
+> Prefer to check first? Read [`herdr-plugin/herdr/fetch-or-build.sh`](herdr-plugin/herdr/fetch-or-build.sh).
 
 Then add keys to `~/.config/herdr/config.toml`, using keys that are free in your setup:
 
@@ -144,6 +131,25 @@ description = "avocado-trope: every agent"
 ```
 
 Run `herdr server reload-config` after adding them. `q` closes either screen.
+
+### Without herdr
+
+The session graph, compare and export need only a terminal:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/andymartinezot/avocado-trope/main/scripts/install.sh | sh
+```
+
+This installs the latest release into `~/.local/bin` (set `INSTALL_DIR` to change that), after
+checking its checksum. Or download a binary from
+[Releases](https://github.com/andymartinezot/avocado-trope/releases), or build from source with
+`cargo install --git https://github.com/andymartinezot/avocado-trope`.
+
+```sh
+avocado-trope                 # follow the live session of the current folder
+avocado-trope <id>            # replay a session by id, or a unique prefix of one
+avocado-trope <file.jsonl>    # replay a session file
+```
 
 ---
 
@@ -189,7 +195,7 @@ tell you, so avocado-trope won't guess: it shows the token count alone until you
 ## Fleet
 
 ```sh
-zoe fleet
+avocado-trope fleet
 ```
 
 One row per agent, grouped by workspace in herdr's order. Inside a workspace, whoever needs you comes
@@ -206,7 +212,7 @@ first: waiting on you, then stuck, working, done and idle.
 | `t` / `?` / `q` | Next theme / help / quit |
 
 Columns drop out as the window narrows, least useful first. With `--notify`, herdr shows a
-notification when an agent starts waiting on you or gets stuck, once per change. `zoe fleet --json`
+notification when an agent starts waiting on you or gets stuck, once per change. `avocado-trope fleet --json`
 prints one snapshot for scripts.
 
 In the fleet, only an agent herdr reports as working can be stuck, and one with no open call counts
@@ -230,7 +236,7 @@ The screen works during the first read: rows appear as each session finishes.
 ## Compare two sessions
 
 ```sh
-zoe compare <session-a> <session-b> --speed 8
+avocado-trope compare <session-a> <session-b> --speed 8
 ```
 
 Both start from their first record at the same speed, and wait until both are loaded. At any moment
@@ -247,9 +253,9 @@ shared clock.
 ## Export a session
 
 ```sh
-zoe inspect <id>                       # readable tree
-zoe inspect --json <id>                # agents, tools, failures, files, prompts
-zoe inspect --markdown <id> > run.md   # a summary to paste into a pull request
+avocado-trope inspect <id>                       # readable tree
+avocado-trope inspect --json <id>                # agents, tools, failures, files, prompts
+avocado-trope inspect --markdown <id> > run.md   # a summary to paste into a pull request
 ```
 
 Exports hold what the session holds, including prompts, file paths and error text, which can contain
@@ -265,13 +271,13 @@ look) and `terminal` (your terminal's own colors, which also suits light themes)
 Press `t` to switch; your choice is remembered. Otherwise the first of these that applies wins:
 
 1. `--theme <name>`
-2. `$ZOE_THEME`
+2. `$AVOCADO_TROPE_THEME`
 3. The theme you last picked with `t`
 4. herdr's theme, when running inside a herdr pane
 5. `dracula`
 
 Names from other tools work too (`catppuccin-mocha`, `tokyo-night-storm`), and light variants map to
-`terminal`. `zoe --theme list` prints the names.
+`terminal`. `avocado-trope --theme list` prints the names.
 
 ---
 
@@ -295,19 +301,19 @@ zoetrope, for the design of the core.
 
 | Command | Does |
 |---|---|
-| `zoe` | Follow the current folder's live session |
-| `zoe <file\|id\|dir>` | Replay a file or session, or follow another folder |
-| `zoe fleet` | Every herdr agent on one screen |
-| `zoe compare <a> <b>` | Two sessions side by side |
-| `zoe inspect <file\|id\|dir>` | Print a session, no TUI |
+| `avocado-trope` | Follow the current folder's live session |
+| `avocado-trope <file\|id\|dir>` | Replay a file or session, or follow another folder |
+| `avocado-trope fleet` | Every herdr agent on one screen |
+| `avocado-trope compare <a> <b>` | Two sessions side by side |
+| `avocado-trope inspect <file\|id\|dir>` | Print a session, no TUI |
 
 | Flag | Applies to | Does |
 |---|---|---|
-| `--follow` | `zoe` | Start at the live edge instead of the beginning |
-| `--speed N` | `zoe`, `compare` | Replay speed (default 8) |
-| `--provider <name>` | `zoe`, `inspect` | Force `claude` or `codex` |
+| `--follow` | `avocado-trope` | Start at the live edge instead of the beginning |
+| `--speed N` | `avocado-trope`, `compare` | Replay speed (default 8) |
+| `--provider <name>` | `avocado-trope`, `inspect` | Force `claude` or `codex` |
 | `--theme <name\|list>` | all | Color theme, or print the names |
-| `--stuck-after N` | `zoe`, `fleet`, `compare` | Minutes before an open tool call is stuck (default 5) |
+| `--stuck-after N` | `avocado-trope`, `fleet`, `compare` | Minutes before an open tool call is stuck (default 5) |
 | `--context-window N` | all | Window in tokens, for agents whose format doesn't state one |
 | `--interval N` | `fleet` | Seconds between polls (default 2) |
 | `--notify` | `fleet` | Notify through herdr when an agent starts needing you |
@@ -322,12 +328,12 @@ zoetrope, for the design of the core.
 - **Never touches your sessions:** transcripts are only read. It can't type into an agent or change
   a pane. `enter` only moves focus.
 - **No network:** nothing in the program opens a connection, and there is no telemetry.
-- **Only starts two programs:** `zoe fleet` runs `herdr`, and `g` runs `zoe` itself. Both use fixed
+- **Only starts two programs:** `avocado-trope fleet` runs `herdr`, and `g` runs `avocado-trope` itself. Both use fixed
   arguments with no shell, and herdr calls are killed after 5 seconds. Session text never reaches a
   shell; a notification's text is passed as a single argument.
 - **Cleans what it shows:** transcripts can hold anything, so control characters are dropped before
   they reach your terminal.
-- **Built from source:** with no release binaries, what runs is what you compiled.
+- **Verified downloads:** both installers check the release's sha256 and won't install a mismatch.
 
 ---
 
@@ -353,7 +359,7 @@ output do appear on screen, so mind what you share while it's open.
 | The session log is one line | The window is under 30 rows. `e` and `/` still open a taller log from 20 rows |
 | The sidebar is missing | The window is under 110 columns, or a detail panel is open. `B` pins it down to 60 |
 | The theme ignores herdr | You picked one with `t`, which wins. Delete `~/.config/avocado-trope/theme` |
-| herdr opens the old look | Its pane runs `target/release/zoe` from your clone: run `cargo build --release` |
+| A linked clone shows the old look | Its panes run `target/release/avocado-trope` from that clone: run `cargo build --release` |
 
 ---
 
@@ -368,6 +374,12 @@ cargo run -- fleet --demo assets/fleet/demo.json   # made-up agents, no herdr ne
 UPDATE_GOLDEN=1 cargo test                         # after an intended change to parsing
 vhs scripts/demo/fleet.tape                        # re-record a GIF (brew install vhs)
 ```
+
+To work on the plugin from a clone, run `herdr plugin link herdr-plugin`: its panes then use your
+`target/release` build.
+
+Releases are cut by pushing a `vX.Y.Z` tag that matches `version` in both `Cargo.toml` and
+`herdr-plugin/herdr-plugin.toml`. GitHub Actions then publishes the binaries and `SHA256SUMS`.
 
 Commits follow [Conventional Commits](https://www.conventionalcommits.org). To bring in upstream
 work: `git remote add upstream https://github.com/furkankly/zoetrope`, then `git fetch upstream` and

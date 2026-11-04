@@ -17,7 +17,7 @@ Feeders see two operations, both in `src/provider/mod.rs`, both written once:
 | Operation | Question | Callers |
 |---|---|---|
 | `open(target, only) -> Result<Session, OpenError>` | One session: its provider, id, and every file of it known right now | replay, follow, `inspect`, herdr (path or id) |
-| `sweep(scope, only) -> Vec<Session>` | Every session under every provider's roots that the scope admits, newest first | `open` by id and by directory, the newer-session auto-switch, and later the rail and `zoe sessions` |
+| `sweep(scope, only) -> Vec<Session>` | Every session under every provider's roots that the scope admits, newest first | `open` by id and by directory, the newer-session auto-switch, and later the rail and `avocado-trope sessions` |
 
 `open` is `sweep` narrowed to one session: both feed paths through the same provider question and the same core assembly. The only difference is which paths go in (§4). `only` forces one provider (`--provider`); `None` reads it off the content.
 
@@ -144,7 +144,7 @@ What used to be five feeder sites naming `claude::` are these calls. The live ta
 - **`inspect`** (`main.rs`): `open`, read every file, fold. Session-level facts go to the info header whichever record carried them (a Codex root names itself and its app on one line; `Statement::take_session_meta` splits it).
 - **The browser** (`web/wasm`): no filesystem. The page reads files (a drop, an upload, or a directory it may keep re-reading) and passes `[{path, text}]` to `zoetrope_load`; `tailer::Bundle` does the rest through `session_file_from`, `stream_for` and `sidecar`, and `zoetrope_append` continues the same streams. The page's own job is finding files: Claude by the `<uuid>.jsonl` and `<uuid>/subagents/` layout, Codex by reading each rollout's first line, which is `session_file`'s logic written a second time in JavaScript because the page cannot call it before the files are read.
 - **The herdr plugin** (`herdr-plugin/`): asks Herdr which session the focused
-  pane is running, hands `zoe` that id, and `open` does the rest. It is the
+  pane is running, hands `avocado-trope` that id, and `open` does the rest. It is the
   case `Target::Id` was written for: the id is known, the file is not. See
   [HERDR-PLUGIN.md](HERDR-PLUGIN.md).
 
@@ -154,14 +154,14 @@ What used to be five feeder sites naming `claude::` are these calls. The live ta
 
 | Invocation | Resolves to |
 |---|---|
-| `zoe <file>` | `open(Path)`. Provider by content. Works for any provider's root or agent file. |
-| `zoe <id-prefix>` | `open(Id)`. Across every provider's roots; an ambiguous prefix is an error listing the matches. |
-| `zoe` | `open(Here)`: newest session in this project, any provider, then followed. |
-| `zoe <dir>` | `open(Here(dir))`: the same for another project. |
-| `zoe --provider codex ...` | Forces the provider for a path when `provider_of` cannot tell, or restricts an id or directory lookup to one provider. Never the default route. |
-| `zoe inspect <file>` | `open(Path)` rendered as text. |
+| `avocado-trope <file>` | `open(Path)`. Provider by content. Works for any provider's root or agent file. |
+| `avocado-trope <id-prefix>` | `open(Id)`. Across every provider's roots; an ambiguous prefix is an error listing the matches. |
+| `avocado-trope` | `open(Here)`: newest session in this project, any provider, then followed. |
+| `avocado-trope <dir>` | `open(Here(dir))`: the same for another project. |
+| `avocado-trope --provider codex ...` | Forces the provider for a path when `provider_of` cannot tell, or restricts an id or directory lookup to one provider. Never the default route. |
+| `avocado-trope inspect <file>` | `open(Path)` rendered as text. |
 
-Later, with the rail: `zoe sessions` as `sweep` rendered as a table.
+Later, with the rail: `avocado-trope sessions` as `sweep` rendered as a table.
 
 ---
 

@@ -124,9 +124,9 @@ cmd_check() {
   # cuts the recording mid-gesture. The length is asked of the binary, which
   # sums its own Step list — the tape used to carry a hand-copied "MUST equal
   # the script's total (~10.8s)" that nothing enforced.
-  if [[ -x target/release/zoe ]]; then
+  if [[ -x target/release/avocado-trope ]]; then
     local secs sleep_s
-    secs=$(ZOETROPE_DEMO=duration target/release/zoe 2>/dev/null || echo 0)
+    secs=$(ZOETROPE_DEMO=duration target/release/avocado-trope 2>/dev/null || echo 0)
     sleep_s=$(grep -oE '^Sleep [0-9.]+s' assets/tour.tape | tail -1 | grep -oE '[0-9.]+')
     if [[ -n $secs && -n $sleep_s ]] && awk -v a="$sleep_s" -v b="$secs" 'BEGIN{exit !(a < b)}'; then
       echo "  SHORT   assets/tour.tape sleeps ${sleep_s}s for a ${secs}s script"; bad=1

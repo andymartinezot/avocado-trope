@@ -1,4 +1,4 @@
-//! The headless text view of a session: what `zoe inspect` prints, and what a
+//! The headless text view of a session: what `avocado-trope inspect` prints, and what a
 //! provider's golden test compares against. One renderer for both, so the
 //! thing a human reads to check a provider is the thing the test checks.
 
