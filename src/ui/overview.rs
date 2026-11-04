@@ -105,20 +105,23 @@ pub(crate) fn render_sidebar(frame: &mut Frame, area: Rect, app: &App) {
         ])
     };
 
-    // Elapsed: the root agent's first record to the latest record of anyone.
+    // Elapsed: the root agent's first record to now. At a live edge "now" is
+    // the wall clock, so the figure keeps ticking through a long tool call;
+    // anywhere else it is the playhead, so scrubbing back rewinds it.
     let last: Option<DateTime<Utc>> = session.agents.values().filter_map(|a| a.last_ts).max();
-    if let (Some(start), Some(end)) = (main.and_then(|a| a.first_ts), last) {
+    let end = app.timeline.now_reference().or(last);
+    if let (Some(start), Some(end)) = (main.and_then(|a| a.first_ts), end) {
         lines.push(row("elapsed", fmt_duration(end - start), value));
     }
 
     // Agents by state.
-    let (mut running, mut done, mut failed) = (0, 0, 0);
+    let (mut running, mut idle, mut done, mut failed) = (0, 0, 0, 0);
     for a in session.agents.values() {
         match a.status {
             AgentStatus::Running => running += 1,
+            AgentStatus::Idle | AgentStatus::Stopped => idle += 1,
             AgentStatus::Done => done += 1,
             AgentStatus::Failed => failed += 1,
-            AgentStatus::Idle | AgentStatus::Stopped => {}
         }
     }
     lines.push(Line::from(vec![
@@ -127,6 +130,10 @@ pub(crate) fn render_sidebar(frame: &mut Frame, area: Rect, app: &App) {
         Span::styled(
             format!("{} {running} ", AgentStatus::Running.glyph()),
             bg.fg(look.status(AgentStatus::Running)),
+        ),
+        Span::styled(
+            format!("{} {idle} ", AgentStatus::Idle.glyph()),
+            bg.fg(look.status(AgentStatus::Idle)),
         ),
         Span::styled(
             format!("{} {done} ", AgentStatus::Done.glyph()),
@@ -236,7 +243,7 @@ pub(crate) fn render_session_log(frame: &mut Frame, rows: Rect, app: &App) {
     let start = events.len().saturating_sub(n);
 
     let r = Rect::new(
-        rows.x + 1,
+        rows.x.saturating_add(1),
         rows.y,
         rows.width.saturating_sub(2),
         rows.height,
@@ -270,8 +277,12 @@ pub(crate) fn render_session_log(frame: &mut Frame, rows: Rect, app: &App) {
                 };
                 let used = 10 + agent_w + tool_w + 2;
                 let tw = (r.width as usize).saturating_sub(used);
+                // Pad by display columns, not chars, so a wide-char summary
+                // doesn't push the mark off the row.
+                let text = truncate(e.text, tw);
+                let pad = tw.saturating_sub(unicode_width::UnicodeWidthStr::width(text.as_str()));
                 spans.push(Span::styled(
-                    format!("{:<tw$}", truncate(e.text, tw)),
+                    format!("{text}{}", " ".repeat(pad)),
                     bg.fg(palette.subtle),
                 ));
                 spans.push(Span::styled(mark.0, bg.fg(mark.1)));

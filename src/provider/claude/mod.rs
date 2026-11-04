@@ -230,7 +230,9 @@ pub fn facts(source: &Source, entry: &Entry) -> Vec<Fact> {
                 kind,
             };
             if let Some(msg) = &e.message {
-                if let Some(model) = &msg.model {
+                // Claude Code stamps its own error messages with the
+                // placeholder `<synthetic>`; that is not a model.
+                if let Some(model) = msg.model.as_ref().filter(|m| *m != "<synthetic>") {
                     out.push(about(FactKind::Model(model.clone())));
                 }
                 if let Some(usage) = &msg.usage
@@ -383,9 +385,11 @@ pub fn facts(source: &Source, entry: &Entry) -> Vec<Fact> {
             "permission",
             str_field(&e.fields, "permissionMode"),
         ),
-        Entry::LastPrompt(e) => {
-            push_session(&mut out, "last prompt", str_field(&e.fields, "lastPrompt"))
-        }
+        Entry::LastPrompt(e) => push_session(
+            &mut out,
+            "last prompt",
+            str_field(&e.fields, "lastPrompt").and_then(|t| strip_reminders(&t)),
+        ),
         Entry::QueueOperation(e) => {
             if str_field(&e.fields, "operation").as_deref() == Some("enqueue") {
                 out.push(meta(FactKind::Tally("queued".into())));

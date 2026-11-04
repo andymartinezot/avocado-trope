@@ -329,7 +329,7 @@ fn pick_theme(flag: Option<String>) {
     let env = std::env::var("ZOE_THEME").ok().filter(|v| !v.is_empty());
     let herdr = || {
         std::env::var_os("HERDR_PANE_ID")?;
-        herdr_theme(&std::fs::read_to_string(herdr_config_path()?).ok()?)
+        herdr_theme(&read_capped(&herdr_config_path()?)?)
     };
     if let Some(name) = flag.or(env).or_else(herdr) {
         zoetrope::theme::set_by_name(&name);
@@ -347,6 +347,19 @@ fn herdr_config_path() -> Option<PathBuf> {
     Some(base.join("herdr").join("config.toml"))
 }
 
+/// The first 64 KiB of a file as text: a config is tiny, and a path that
+/// turns out to be a FIFO or a device must not hang or grow the read.
+fn read_capped(path: &std::path::Path) -> Option<String> {
+    use std::io::Read;
+    let mut text = String::new();
+    std::fs::File::open(path)
+        .ok()?
+        .take(64 * 1024)
+        .read_to_string(&mut text)
+        .ok()?;
+    Some(text)
+}
+
 /// `name` under `[theme]` in a Herdr config. A line scan rather than a TOML
 /// parser: the key is a plain `name = "…"` string in one known table.
 fn herdr_theme(config: &str) -> Option<String> {
@@ -360,11 +373,21 @@ fn herdr_theme(config: &str) -> Option<String> {
         if !in_theme {
             continue;
         }
-        if let Some(value) = line.strip_prefix("name").map(str::trim_start) {
-            let value = value.strip_prefix('=')?.trim();
-            let value = value.split('#').next()?.trim().trim_matches(['"', '\'']);
-            return (!value.is_empty()).then(|| value.to_string());
-        }
+        // Only the `name` key itself: `name_x = …` is some other key.
+        let Some(value) = line
+            .strip_prefix("name")
+            .map(str::trim_start)
+            .and_then(|v| v.strip_prefix('='))
+        else {
+            continue;
+        };
+        let value = value
+            .split('#')
+            .next()
+            .unwrap_or("")
+            .trim()
+            .trim_matches(['"', '\'']);
+        return (!value.is_empty()).then(|| value.to_string());
     }
     None
 }
@@ -396,6 +419,11 @@ mod tests {
         let cfg = "onboarding = false\n[ui]\nname = \"no\"\n[theme]\nname = \"tokyo-night\" # mine\nauto_switch = false\n[ui.toast]\n";
         assert_eq!(herdr_theme(cfg).as_deref(), Some("tokyo-night"));
         assert_eq!(herdr_theme("[theme.custom]\nname = \"x\"\n"), None);
+        // Other keys that start with `name` don't stop the scan.
+        assert_eq!(
+            herdr_theme("[theme]\nname_override = true\nnames = 1\nname = \"nord\"\n").as_deref(),
+            Some("nord")
+        );
         assert_eq!(herdr_theme(""), None);
     }
 

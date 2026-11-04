@@ -90,10 +90,17 @@ fn tree(model: &SessionModel, parent: Option<&str>, depth: usize, out: &mut Stri
             out.push_str(&format!("{indent}    model: {model_name}\n"));
         }
         out.push_str(&format!(
-            "{indent}    tools: {} ({ok}✓ {err}✗ {pending}⏳)   tokens: {}\n",
+            "{indent}    tools: {} ({ok}✓ {err}✗ {pending}⏳)   tokens: {}",
             agent.tool_calls().len(),
             agent.output_tokens
         ));
+        if agent.context_tokens > 0 {
+            out.push_str(&format!(
+                "   context: {}",
+                crate::ui::overview::fmt_context(agent.context_tokens, agent.context_window)
+            ));
+        }
+        out.push('\n');
         // Provenance: what triggered this agent (the panel's `↳ prompt`/`↳ thought`).
         if let Some(ctx) = model.provenance(agent) {
             if let Some(prompt) = model.provenance_prompt(ctx) {

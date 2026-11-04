@@ -4,7 +4,9 @@
 # since this terminal is what the user is looking at.
 set -euo pipefail
 
-root="${HERDR_PLUGIN_ROOT:-.}"
+# Herdr sets HERDR_PLUGIN_ROOT; run by hand, the plugin root is this
+# script's parent directory, never the current directory.
+root="${HERDR_PLUGIN_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
 
 die() {
   printf '\n  %s\n\n' "$*" >&2

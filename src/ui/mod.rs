@@ -209,7 +209,7 @@ fn render_header(frame: &mut Frame, area: Rect, app: &App) {
     if let Some(m) = model {
         left.push(Span::styled(" · ", bg.fg(palette.subtle)));
         left.push(Span::styled(
-            m,
+            truncate(&m, 24),
             bg.fg(look.role(AgentKind::Main))
                 .add_modifier(Modifier::BOLD),
         ));
@@ -696,6 +696,8 @@ fn render_log_line(frame: &mut Frame, row: Rect, app: &App) {
 
 /// Centered help overlay: full key reference + status-glyph legend.
 fn render_help(frame: &mut Frame, area: Rect, palette: &rataflow::Palette) {
+    use crate::state::session::AgentStatus;
+    let look = crate::theme::current();
     let w = area.width.min(60);
     let h = area.height.min(20);
     if w < 24 || h < 9 {
@@ -780,13 +782,13 @@ fn render_help(frame: &mut Frame, area: Rect, palette: &rataflow::Palette) {
         Line::from(""),
         Line::from(vec![
             Span::styled(" status    ", key),
-            Span::styled("● ", bg.fg(palette.success)),
+            Span::styled("● ", bg.fg(look.status(AgentStatus::Running))),
             Span::styled("active/running  ", txt),
-            Span::styled("◌ ", dim),
+            Span::styled("◌ ", bg.fg(look.status(AgentStatus::Idle))),
             Span::styled("idle  ", txt),
-            Span::styled("✓ ", bg.fg(palette.accent)),
+            Span::styled("✓ ", bg.fg(look.status(AgentStatus::Done))),
             Span::styled("done  ", txt),
-            Span::styled("✗ ", bg.fg(palette.error)),
+            Span::styled("✗ ", bg.fg(look.status(AgentStatus::Failed))),
             Span::styled("failed", txt),
         ]),
         Line::from(vec![

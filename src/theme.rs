@@ -334,11 +334,17 @@ pub fn short_model(model: &str) -> String {
         let ver = parts.next().unwrap_or_default();
         return match parts.next() {
             Some(tail) => {
-                let mut t = tail.replace('-', " ");
-                if let Some(c) = t.get(..1) {
-                    t = c.to_uppercase() + &t[1..];
-                }
-                format!("GPT-{ver} {t}")
+                let words: Vec<String> = tail
+                    .split('-')
+                    .map(|w| {
+                        let mut c = w.chars();
+                        match c.next() {
+                            Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
+                            None => String::new(),
+                        }
+                    })
+                    .collect();
+                format!("GPT-{ver} {}", words.join(" "))
             }
             None => format!("GPT-{ver}"),
         };
@@ -376,6 +382,8 @@ mod tests {
         assert_eq!(short_model("claude-3-5-haiku-20241022"), "Haiku 3.5");
         assert_eq!(short_model("claude-opus-5-5"), "Opus 5.5");
         assert_eq!(short_model("gpt-5-codex"), "GPT-5 Codex");
+        assert_eq!(short_model("gpt-5-codex-mini"), "GPT-5 Codex Mini");
+        assert_eq!(short_model("gpt-5.1-codex"), "GPT-5.1 Codex");
         assert_eq!(short_model("gpt-5"), "GPT-5");
         assert_eq!(short_model("o3"), "o3");
     }
