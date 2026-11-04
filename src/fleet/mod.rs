@@ -163,7 +163,7 @@ pub fn herdr_bin() -> String {
 }
 
 /// Run `herdr <args>` and return stdout. Fixed argv, no shell; killed if it
-/// outlives [`HERDR_TIMEOUT`], so a wedged Herdr can't wedge the poller.
+/// outlives `HERDR_TIMEOUT`, so a wedged Herdr can't wedge the poller.
 pub async fn herdr(args: &[&str]) -> Result<String, String> {
     let run = Command::new(herdr_bin())
         .args(args)

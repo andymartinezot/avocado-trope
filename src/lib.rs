@@ -5,12 +5,8 @@
     html_logo_url = "https://raw.githubusercontent.com/furkankly/zoetrope/main/assets/icon.svg",
     html_favicon_url = "https://raw.githubusercontent.com/furkankly/zoetrope/main/assets/icon.svg"
 )]
-// The README is the crate's front page on docs.rs as well as on crates.io: this
-// is an application, so what a reader needs first is what zoetrope does, not the
-// module list. Its images use absolute URLs for the same reason the logo above
-// does. What follows is the part that only concerns someone depending on the
-// library rather than running the binary.
-#![doc = include_str!("../README.md")]
+//! avocado-trope: watch Claude Code and Codex agents as a live flow graph.
+//! See the README for usage.
 //!
 //! ## The library
 //!

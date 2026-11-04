@@ -36,6 +36,20 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f2032f911046de80f0a198e0901378627c33f59ea0ac00e363d481118bd70a53"
 
 [[package]]
+name = "avocado-trope"
+version = "0.3.0"
+dependencies = [
+ "chrono",
+ "imbl",
+ "rataflow",
+ "ratatui",
+ "serde",
+ "serde_json",
+ "unicode-width",
+ "web-time",
+]
+
+[[package]]
 name = "beamterm-core"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1101,23 +1115,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "29666d0abbfad1e3dc4dcf6144730dd3a3ab225bbbdac83319345b1b44ccfc1b"
 
 [[package]]
-name = "zoetrope"
-version = "0.2.0"
-dependencies = [
- "chrono",
- "imbl",
- "rataflow",
- "ratatui",
- "serde",
- "serde_json",
- "unicode-width",
- "web-time",
-]
-
-[[package]]
 name = "zoetrope-web"
 version = "0.0.0"
 dependencies = [
+ "avocado-trope",
  "console_error_panic_hook",
  "critical-section",
  "rataflow",
@@ -1128,5 +1129,4 @@ dependencies = [
  "wasm-bindgen",
  "web-sys",
  "web-time",
- "zoetrope",
 ]
