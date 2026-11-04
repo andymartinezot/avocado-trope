@@ -39,7 +39,7 @@ by definition here, since the pane's agent is running.
 | `herdr/open.sh` | the pane command. Resolves the session and execs `avocado-trope` |
 | `herdr/resolve.sh` | asks `pane.get` about the focused pane, prints `<agent> <session-id>`, or exits with the reason |
 | `herdr/keys.sh` | the `setup-keys` / `remove-keys` actions |
-| `herdr/ensure-zoe.sh` | the `[[build]]` step: is a usable `avocado-trope` on `PATH` |
+| `herdr/fetch-or-build.sh` | the `[[build]]` step: downloads the checksum-verified release matching the plugin version, or builds from source |
 
 Two decisions in there are worth keeping.
 
@@ -89,7 +89,6 @@ release:
 |---|---|---|
 | `version` | `herdr-plugin.toml` | the files in `herdr-plugin/` change. Displayed by Herdr, resolved by nothing |
 | `min_herdr_version` | `herdr-plugin.toml` | a script starts using a newer Herdr API. The only one that can block an install |
-| `ZOE_SINCE` | `herdr/ensure-zoe.sh` | the `avocado-trope` command line the scripts call changes. A label for the error message, not a check |
 
 `herdr plugin install` clones the repo at its default branch (or at `--ref`), so
 what people get is main, and reinstalling is how it updates. There is no
