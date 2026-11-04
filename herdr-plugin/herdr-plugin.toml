@@ -1,5 +1,5 @@
-id = "furkankly.zoetrope"
-name = "zoetrope"
+id = "andymartinezot.avocado-trope"
+name = "avocado-trope"
 # This versions the bridge in this directory, not zoetrope. The scripts here
 # launch `zoe`; the graph, and every improvement to it, arrives with the binary
 # through Homebrew and crates.io, on its own release schedule and without any
@@ -32,13 +32,13 @@ command = ["bash", "herdr/ensure-zoe.sh"]
 # want it persistent can open it as a split from the action below.
 [[panes]]
 id = "graph"
-title = "zoetrope"
+title = "avocado-trope"
 placement = "overlay"
 command = ["bash", "herdr/open.sh"]
 
 [[actions]]
 id = "open"
-title = "zoetrope: session graph (overlay)"
+title = "avocado-trope: session graph (overlay)"
 description = "Open the focused agent's session as a flow graph, over the focused pane. Closing it restores your layout. This is what the default key does."
 contexts = ["pane", "workspace"]
 command = ["bash", "herdr/pane.sh", "open"]
@@ -46,7 +46,7 @@ command = ["bash", "herdr/pane.sh", "open"]
 # Beside the agent instead of over it: a persistent split, no zoom, no overlay.
 [[actions]]
 id = "open-split"
-title = "zoetrope: session graph (split)"
+title = "avocado-trope: session graph (split)"
 description = "Open the focused agent's session as a flow graph, split beside the focused pane. Stays until you close it."
 contexts = ["pane", "workspace"]
 command = ["bash", "herdr/pane.sh", "open", "split"]
@@ -54,7 +54,7 @@ command = ["bash", "herdr/pane.sh", "open", "split"]
 # Its own tab: full area, kept until closed, one tab switch away from the agent.
 [[actions]]
 id = "open-tab"
-title = "zoetrope: session graph (tab)"
+title = "avocado-trope: session graph (tab)"
 description = "Open the focused agent's session as a flow graph in its own tab. Full size, one tab switch from the agent."
 contexts = ["pane", "workspace"]
 command = ["bash", "herdr/pane.sh", "open", "tab"]
@@ -63,14 +63,14 @@ command = ["bash", "herdr/pane.sh", "open", "tab"]
 # by an action: one marker-fenced block, removable by the sibling action.
 [[actions]]
 id = "setup-keys"
-title = "zoetrope: install the default keybinding"
+title = "avocado-trope: install the default keybinding"
 description = "Bind prefix+shift+z to the overlay, and write the split and tab placements beside it as comments. One block in your Herdr config, backed up first."
 contexts = ["workspace"]
 command = ["bash", "herdr/keys.sh", "setup"]
 
 [[actions]]
 id = "remove-keys"
-title = "zoetrope: remove the default keybinding"
+title = "avocado-trope: remove the default keybinding"
 description = "Delete the block setup-keys wrote."
 contexts = ["workspace"]
 command = ["bash", "herdr/keys.sh", "remove"]

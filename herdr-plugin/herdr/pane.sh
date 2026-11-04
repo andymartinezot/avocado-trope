@@ -3,7 +3,7 @@
 #
 # Pressing the key again with the graph in front should put the agent back, not
 # ask the graph pane which session it is running. Herdr labels a plugin pane
-# with its manifest title, so a focused pane labelled "zoetrope" that holds no
+# with its manifest title, so a focused pane labelled "avocado-trope" that holds no
 # agent is ours.
 #
 # The pane resolves the session itself (herdr/open.sh). An action runs headless
@@ -14,7 +14,7 @@ set -euo pipefail
 
 herdr="${HERDR_BIN_PATH:-herdr}"
 ctx="${HERDR_PLUGIN_CONTEXT_JSON:-{\}}"
-title="zoetrope"
+title="avocado-trope"
 placement="${2:-overlay}"
 
 case "${1:-open}" in
@@ -35,6 +35,6 @@ if command -v jq >/dev/null 2>&1; then
 fi
 
 exec "$herdr" plugin pane open \
-  --plugin "${HERDR_PLUGIN_ID:-furkankly.zoetrope}" \
+  --plugin "${HERDR_PLUGIN_ID:-andymartinezot.avocado-trope}" \
   --entrypoint graph \
   --placement "$placement"

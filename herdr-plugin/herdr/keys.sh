@@ -12,7 +12,7 @@
 set -euo pipefail
 
 herdr="${HERDR_BIN_PATH:-herdr}"
-plugin="${HERDR_PLUGIN_ID:-furkankly.zoetrope}"
+plugin="${HERDR_PLUGIN_ID:-andymartinezot.avocado-trope}"
 begin="# >>> $plugin keys (managed: \`setup-keys\` writes this block, \`remove-keys\` deletes it)"
 end="# <<< $plugin keys"
 
