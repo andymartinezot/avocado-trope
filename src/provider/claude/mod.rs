@@ -352,8 +352,28 @@ pub fn facts(source: &Source, entry: &Entry) -> Vec<Fact> {
                                 outcome,
                             },
                         });
+                        if outcome == Outcome::Err
+                            && let Some(text) = r.content.as_ref().map(|c| c.text())
+                            && !text.trim().is_empty()
+                        {
+                            out.push(Fact {
+                                agent: Some(owner.clone()),
+                                ts,
+                                kind: FactKind::ToolError {
+                                    call: call.clone(),
+                                    text,
+                                },
+                            });
+                        }
                     }
                 }
+            }
+            if let Some((path, created)) = e.changed_file() {
+                out.push(Fact {
+                    agent: Some(owner.clone()),
+                    ts,
+                    kind: FactKind::File { path, created },
+                });
             }
             ensure_activity(&mut out, &owner, ts);
         }

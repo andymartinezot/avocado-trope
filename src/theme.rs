@@ -33,6 +33,8 @@ pub struct Roles {
     pub running: Color,
     /// A finished agent's ✓.
     pub done: Color,
+    /// Attention short of failure: a stuck agent, a filling context.
+    pub warn: Color,
 }
 
 /// A complete theme.
@@ -66,6 +68,16 @@ impl Look {
         }
     }
 
+    /// Color for context use at a given pressure.
+    pub fn pressure(&self, pressure: crate::settings::Pressure) -> Color {
+        use crate::settings::Pressure;
+        match pressure {
+            Pressure::Normal => self.palette.subtle,
+            Pressure::High => self.roles.warn,
+            Pressure::Critical => self.palette.error,
+        }
+    }
+
     /// The rataflow theme for the canvas.
     pub fn flow_theme(&self) -> Theme {
         Theme::Custom(self.palette)
@@ -95,6 +107,7 @@ const DRACULA: Look = Look {
         group: hex(0xbd93f9),
         running: hex(0x50fa7b),
         done: hex(0xbd93f9),
+        warn: hex(0xf1fa8c),
     },
 };
 
@@ -117,6 +130,7 @@ const CATPPUCCIN: Look = Look {
         group: hex(0xcba6f7),
         running: hex(0xa6e3a1),
         done: hex(0xcba6f7),
+        warn: hex(0xf9e2af),
     },
 };
 
@@ -139,6 +153,7 @@ const TOKYO_NIGHT: Look = Look {
         group: hex(0xbb9af7),
         running: hex(0x9ece6a),
         done: hex(0xbb9af7),
+        warn: hex(0xe0af68),
     },
 };
 
@@ -161,6 +176,7 @@ const GRUVBOX: Look = Look {
         group: hex(0xd3869b),
         running: hex(0xb8bb26),
         done: hex(0xd3869b),
+        warn: hex(0xfabd2f),
     },
 };
 
@@ -183,6 +199,7 @@ const NORD: Look = Look {
         group: hex(0xb48ead),
         running: hex(0xa3be8c),
         done: hex(0xb48ead),
+        warn: hex(0xebcb8b),
     },
 };
 
@@ -200,6 +217,7 @@ const CLASSIC: Look = Look {
         group: Palette::DARK.muted,
         running: Palette::DARK.success,
         done: Color::Indexed(178),
+        warn: Color::Indexed(214),
     },
 };
 
@@ -223,6 +241,7 @@ const TERMINAL: Look = Look {
         group: Color::Magenta,
         running: Color::Green,
         done: Color::Magenta,
+        warn: Color::Yellow,
     },
 };
 

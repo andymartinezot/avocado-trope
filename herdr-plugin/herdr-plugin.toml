@@ -36,6 +36,12 @@ title = "avocado-trope"
 placement = "overlay"
 command = ["bash", "herdr/open.sh"]
 
+[[panes]]
+id = "fleet"
+title = "avocado-trope fleet"
+placement = "overlay"
+command = ["bash", "herdr/fleet.sh"]
+
 [[actions]]
 id = "open"
 title = "avocado-trope: session graph (overlay)"

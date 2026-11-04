@@ -40,7 +40,7 @@ pub(crate) fn fmt_context(used: u64, window: Option<u64>) -> String {
             "{} / {} · {}%",
             fmt_tokens(used),
             fmt_tokens(w),
-            (used.saturating_mul(100) / w).min(100)
+            crate::settings::percent(used, w)
         ),
         None => fmt_tokens(used),
     }
@@ -165,19 +165,53 @@ pub(crate) fn render_sidebar(frame: &mut Frame, area: Rect, app: &App) {
     lines.push(Line::from(tools));
 
     if let Some(a) = main.filter(|a| a.context_tokens > 0) {
-        lines.push(row(
-            "context",
-            fmt_context(a.context_tokens, a.context_window),
-            value,
-        ));
+        let window = crate::settings::effective_window(a.context_window, a.context_peak);
+        let pressure = crate::settings::pressure(a.context_tokens, window);
+        let style = match pressure {
+            crate::settings::Pressure::Normal => value,
+            _ => bg.fg(look.pressure(pressure)),
+        };
+        lines.push(row("context", fmt_context(a.context_tokens, window), style));
     }
     let output: u64 = session.agents.values().map(|a| a.output_tokens).sum();
     if output > 0 {
         lines.push(row("output", format!("{} tok", fmt_tokens(output)), value));
     }
+    // Files changed across every agent.
+    let mut files: std::collections::BTreeMap<&str, bool> = Default::default();
+    for a in session.agents.values() {
+        for (path, created) in a.files.iter() {
+            *files.entry(path).or_default() |= *created;
+        }
+    }
+    if !files.is_empty() {
+        let created = files.values().filter(|c| **c).count();
+        let new = if created > 0 {
+            format!(" · {created} new")
+        } else {
+            String::new()
+        };
+        lines.push(row("files", format!("{}{new}", files.len()), value));
+    }
     // What the provider counted (file edits, queued prompts, …).
     for (name, n) in &app.session_info.tallies {
         lines.push(row(name, n.to_string(), value));
+    }
+
+    // Agents held up by a tool call that won't finish.
+    let stuck: Vec<String> = session
+        .agents
+        .values()
+        .filter_map(|a| Some(format!("⚠ {} · {}", agent_label(a), a.stuck.as_ref()?)))
+        .collect();
+    if !stuck.is_empty() {
+        lines.push(Line::from(""));
+        for s in stuck {
+            lines.push(Line::from(Span::styled(
+                truncate(&s, w),
+                bg.fg(look.roles.warn),
+            )));
+        }
     }
 
     // The prompt the session is working on.
@@ -203,7 +237,23 @@ struct LogRow<'a> {
     /// Tool name, or `None` for a prompt.
     tool: Option<&'a str>,
     text: &'a str,
+    /// What a failed call reported.
+    error: Option<&'a str>,
     state: Option<ToolState>,
+}
+
+impl LogRow<'_> {
+    /// Everything a search matches against, lowercased.
+    fn haystack(&self) -> String {
+        let label = self.agent.map(agent_label).unwrap_or("");
+        format!(
+            "{label} {} {} {}",
+            self.tool.unwrap_or(""),
+            self.text,
+            self.error.unwrap_or("")
+        )
+        .to_lowercase()
+    }
 }
 
 /// The latest `rows.height` events across every agent, newest at the bottom:
@@ -215,28 +265,43 @@ pub(crate) fn render_session_log(frame: &mut Frame, rows: Rect, app: &App) {
     let look = crate::theme::current();
     let palette = app.flow.theme.palette();
     let bg = Style::default().bg(palette.surface);
-    let n = rows.height as usize;
+    let filtering = app.log_errors || app.log_editing || !app.log_query.is_empty();
+    // A filter takes the first row for itself.
+    let n = (rows.height as usize).saturating_sub(usize::from(filtering));
+    let query = app.log_query.to_lowercase();
+    let keep = |e: &LogRow| {
+        (!app.log_errors || e.state == Some(ToolState::Err))
+            && (query.is_empty() || e.haystack().contains(&query))
+    };
 
     let mut events: Vec<LogRow> = Vec::new();
     for a in app.session.agents.values() {
         for t in a.tool_calls() {
-            events.push(LogRow {
+            let row = LogRow {
                 ts: t.ts,
                 agent: Some(a),
                 tool: Some(&t.name),
                 text: t.summary.as_deref().unwrap_or(""),
+                error: t.error.as_deref(),
                 state: Some(t.state),
-            });
+            };
+            if keep(&row) {
+                events.push(row);
+            }
         }
     }
     for p in app.session.prompts.iter() {
-        events.push(LogRow {
+        let row = LogRow {
             ts: p.ts,
             agent: None,
             tool: None,
             text: &p.excerpt,
+            error: None,
             state: None,
-        });
+        };
+        if keep(&row) {
+            events.push(row);
+        }
     }
     // Undated events sort first and fall off the top.
     events.sort_by_key(|e| e.ts);
@@ -251,6 +316,31 @@ pub(crate) fn render_session_log(frame: &mut Frame, rows: Rect, app: &App) {
     let agent_w = 14usize;
     let tool_w = 13usize;
     let mut lines: Vec<Line> = Vec::new();
+    if filtering {
+        let mut bar = Vec::new();
+        if app.log_errors {
+            bar.push(Span::styled(
+                "failures only  ",
+                bg.fg(palette.error).add_modifier(Modifier::BOLD),
+            ));
+        }
+        if app.log_editing || !app.log_query.is_empty() {
+            let cursor = if app.log_editing { "▏" } else { "" };
+            bar.push(Span::styled(
+                format!("/{}{cursor}  ", app.log_query),
+                bg.fg(palette.accent),
+            ));
+        }
+        bar.push(Span::styled(
+            format!(
+                "{} match{}",
+                events.len(),
+                if events.len() == 1 { "" } else { "es" }
+            ),
+            bg.fg(palette.subtle),
+        ));
+        lines.push(Line::from(bar));
+    }
     for e in &events[start..] {
         let time =
             e.ts.map(|t| {
@@ -279,7 +369,12 @@ pub(crate) fn render_session_log(frame: &mut Frame, rows: Rect, app: &App) {
                 let tw = (r.width as usize).saturating_sub(used);
                 // Pad by display columns, not chars, so a wide-char summary
                 // doesn't push the mark off the row.
-                let text = truncate(e.text, tw);
+                // The failure itself says more than what was attempted.
+                let shown = match (app.log_errors, e.error) {
+                    (true, Some(err)) => err,
+                    _ => e.text,
+                };
+                let text = truncate(shown, tw);
                 let pad = tw.saturating_sub(unicode_width::UnicodeWidthStr::width(text.as_str()));
                 spans.push(Span::styled(
                     format!("{text}{}", " ".repeat(pad)),

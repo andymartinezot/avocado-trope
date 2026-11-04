@@ -71,11 +71,16 @@ fn content_matches(info: &AgentInfo, node: &AgentNode) -> bool {
         && node.last_tool.as_deref() == info.last_tool()
         && node.output_tokens == info.output_tokens
         && node.context_tokens == info.context_tokens
-        && node.context_window == info.context_window
+        && node.context_window == effective_window(info)
+        && node.stuck == info.stuck
         && node.interactive == info.is_interactive()
 }
 
 /// Build the [`AgentNode`] content mirrored from an [`AgentInfo`].
+fn effective_window(info: &AgentInfo) -> Option<u64> {
+    crate::settings::effective_window(info.context_window, info.context_peak)
+}
+
 fn build_content(info: &AgentInfo) -> AgentNode {
     AgentNode {
         title: node_title(info),
@@ -87,7 +92,8 @@ fn build_content(info: &AgentInfo) -> AgentNode {
         last_tool: info.last_tool().map(str::to_string),
         output_tokens: info.output_tokens,
         context_tokens: info.context_tokens,
-        context_window: info.context_window,
+        context_window: effective_window(info),
+        stuck: info.stuck.clone(),
         interactive: info.is_interactive(),
     }
 }

@@ -29,6 +29,7 @@
 
 pub mod fact;
 pub mod provider;
+pub mod settings;
 pub mod state;
 pub mod tailer;
 pub mod theme;
@@ -43,6 +44,12 @@ pub mod ui;
 #[cfg(feature = "native")]
 pub mod autopilot;
 #[cfg(feature = "native")]
+pub mod compare;
+#[cfg(feature = "native")]
+pub mod fleet;
+#[cfg(feature = "native")]
 pub mod handler;
+#[cfg(feature = "native")]
+pub mod prefs;
 #[cfg(feature = "native")]
 pub mod tui;

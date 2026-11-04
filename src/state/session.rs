@@ -169,6 +169,8 @@ pub struct ToolCallInfo {
     /// Timestamp of the `tool_result` (when it finished). `None` while pending.
     pub end_ts: Option<DateTime<Utc>>,
     pub state: ToolState,
+    /// One-line excerpt of what a failed call reported.
+    pub error: Option<String>,
 }
 
 impl ToolCallInfo {
@@ -224,6 +226,14 @@ pub struct AgentInfo {
     pub context_tokens: u64,
     /// The model's context limit, when the format states it.
     pub context_window: Option<u64>,
+    /// The largest context seen. Compaction shrinks `context_tokens`, so the
+    /// peak is what proves a window's size.
+    pub context_peak: u64,
+    /// Files this agent changed: path → created by it.
+    pub files: OrdMap<String, bool>,
+    /// The tool call holding this agent up, when one has been open past the
+    /// stuck threshold (see `recompute_stuck`).
+    pub stuck: Option<String>,
     pub first_ts: Option<DateTime<Utc>>,
     pub last_ts: Option<DateTime<Utc>>,
     /// `requestId`s whose usage has already been counted. Claude Code splits one
@@ -260,6 +270,9 @@ impl AgentInfo {
             output_tokens: 0,
             context_tokens: 0,
             context_window: None,
+            context_peak: 0,
+            files: OrdMap::new(),
+            stuck: None,
             first_ts: None,
             last_ts: None,
             seen_dedup_keys: HashSet::new(),
@@ -490,6 +503,7 @@ impl SessionModel {
             FactKind::Context { used, window } => {
                 if let Some(a) = self.agents.get_mut(id) {
                     a.context_tokens = *used;
+                    a.context_peak = a.context_peak.max(*used);
                     if window.is_some() {
                         a.context_window = *window;
                     }
@@ -526,6 +540,7 @@ impl SessionModel {
                         ts: fact.ts,
                         end_ts: None,
                         state: ToolState::Pending,
+                        error: None,
                     });
                 }
             }
@@ -542,6 +557,21 @@ impl SessionModel {
             }
             FactKind::ToolEnd { call, outcome } => {
                 self.complete_tool(id, call, *outcome == Outcome::Err, fact.ts);
+            }
+            FactKind::ToolError { call, text } => {
+                if let Some(a) = self.agents.get_mut(id)
+                    && let Some(&i) = a.tool_index.get(call)
+                    && let Some(tc) = a.tool_calls.get_mut(i)
+                {
+                    tc.error = Some(excerpt(text));
+                }
+            }
+            FactKind::File { path, created } => {
+                if let Some(a) = self.agents.get_mut(id) {
+                    // Created once stays created through later edits.
+                    let was = a.files.get(path).copied().unwrap_or(false);
+                    a.files.insert(path.clone(), was || *created);
+                }
             }
             FactKind::Ended(status) => {
                 self.ended.insert(id.to_string(), *status);
@@ -729,6 +759,40 @@ impl SessionModel {
     ///
     /// Returns whether any status changed (lets callers skip graph work on the
     /// common nothing-happened tick).
+    /// Mark agents held up by a tool call open past the stuck threshold at
+    /// `now`. Returns whether any mark changed.
+    pub fn recompute_stuck(&mut self, now: Option<DateTime<Utc>>) -> bool {
+        let Some(reference) = now.or(self.last_activity) else {
+            return false;
+        };
+        let after = crate::settings::stuck_after_secs() as i64;
+        // Read-only walk first, like `recompute_liveness`: touching an entry
+        // of a persistent map copies it.
+        let changed: Vec<(String, Option<String>)> = self
+            .agents
+            .iter()
+            .filter_map(|(id, agent)| {
+                let holding = agent
+                    .tool_calls
+                    .iter()
+                    .filter(|c| c.state == ToolState::Pending)
+                    // A spawn stays open for its child's whole life; the child
+                    // is what can get stuck.
+                    .filter(|c| !self.spawn_context.contains_key(&c.id))
+                    .find(|c| c.ts.is_some_and(|t| (reference - t).num_seconds() >= after))
+                    .map(|c| c.name.clone());
+                (holding != agent.stuck).then(|| (id.clone(), holding))
+            })
+            .collect();
+        let any = !changed.is_empty();
+        for (id, holding) in changed {
+            if let Some(a) = self.agents.get_mut(&id) {
+                a.stuck = holding;
+            }
+        }
+        any
+    }
+
     pub fn recompute_liveness(&mut self, now: Option<DateTime<Utc>>) -> bool {
         let Some(reference) = now.or(self.last_activity) else {
             return false;
@@ -999,6 +1063,79 @@ mod tests {
     }
 
     #[test]
+    fn a_long_open_tool_is_stuck_but_a_spawn_is_not() {
+        let t = |s: &str| s.parse::<DateTime<Utc>>().unwrap();
+        let mut m = SessionModel::new("s".into());
+        let at = |kind| Fact {
+            agent: Some(MAIN_ID.to_string()),
+            ts: Some(t("2026-06-05T10:00:00Z")),
+            kind,
+        };
+        m.apply_fact(&at(FactKind::ToolStart {
+            call: "spawn".into(),
+            name: "Agent".into(),
+            summary: None,
+        }));
+        m.apply_fact(&at(FactKind::Spawn {
+            call: "spawn".into(),
+        }));
+        assert!(!m.recompute_stuck(Some(t("2026-06-05T11:00:00Z"))));
+        assert_eq!(m.agent(MAIN_ID).unwrap().stuck, None);
+
+        m.apply_fact(&at(FactKind::ToolStart {
+            call: "bash".into(),
+            name: "Bash".into(),
+            summary: None,
+        }));
+        assert!(!m.recompute_stuck(Some(t("2026-06-05T10:04:59Z"))));
+        assert!(m.recompute_stuck(Some(t("2026-06-05T10:05:00Z"))));
+        assert_eq!(m.agent(MAIN_ID).unwrap().stuck.as_deref(), Some("Bash"));
+
+        m.apply_fact(&at(FactKind::ToolEnd {
+            call: "bash".into(),
+            outcome: Outcome::Ok,
+        }));
+        assert!(m.recompute_stuck(Some(t("2026-06-05T10:06:00Z"))));
+        assert_eq!(m.agent(MAIN_ID).unwrap().stuck, None);
+    }
+
+    #[test]
+    fn a_failure_keeps_its_text_and_files_stay_created() {
+        let mut m = SessionModel::new("s".into());
+        let at = |kind| Fact {
+            agent: Some(MAIN_ID.to_string()),
+            ts: Some("2026-06-05T10:00:00Z".parse().unwrap()),
+            kind,
+        };
+        m.apply_fact(&at(FactKind::ToolStart {
+            call: "c".into(),
+            name: "Bash".into(),
+            summary: None,
+        }));
+        m.apply_fact(&at(FactKind::ToolEnd {
+            call: "c".into(),
+            outcome: Outcome::Err,
+        }));
+        m.apply_fact(&at(FactKind::ToolError {
+            call: "c".into(),
+            text: "exit 1\n  no such file".into(),
+        }));
+        let a = m.agent(MAIN_ID).unwrap();
+        assert_eq!(
+            a.tool_calls().next().unwrap().error.as_deref(),
+            Some("exit 1 no such file")
+        );
+
+        for created in [true, false] {
+            m.apply_fact(&at(FactKind::File {
+                path: "a.rs".into(),
+                created,
+            }));
+        }
+        assert_eq!(m.agent(MAIN_ID).unwrap().files.get("a.rs"), Some(&true));
+    }
+
+    #[test]
     fn latest_event_at_narrates_across_marker_kinds() {
         let ts = |s: &str| s.parse::<DateTime<Utc>>().unwrap();
         let tool =
@@ -1010,6 +1147,7 @@ mod tests {
                     ts: Some(ts(t)),
                     end_ts: end.map(&ts),
                     state,
+                    error: None,
                 }
             };
         let mut m = SessionModel::new("s".into());
@@ -1099,6 +1237,7 @@ mod tests {
                 ts: Some(ts("2026-06-05T10:00:00Z")),
                 end_ts: None,
                 state: ToolState::Ok,
+                error: None,
             });
         // The subagent it spawned is born (first activity) at 10:02.
         let mut sub = AgentInfo::new(AgentKind::Subagent);
@@ -1790,6 +1929,7 @@ mod tests {
             ts: Some(t("2026-06-05T10:00:00.000Z")),
             end_ts: None,
             state: ToolState::Pending,
+            error: None,
         };
         // Pending → measured against `now` (the live tick).
         assert_eq!(
@@ -1807,6 +1947,7 @@ mod tests {
             ts: None,
             end_ts: None,
             state: ToolState::Pending,
+            error: None,
         };
         assert!(
             no_start

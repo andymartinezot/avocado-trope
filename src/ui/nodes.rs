@@ -54,6 +54,8 @@ pub struct AgentNode {
     /// Context in use as of the latest request, and the window when known.
     pub context_tokens: u64,
     pub context_window: Option<u64>,
+    /// The tool call holding this agent up, when stuck.
+    pub stuck: Option<String>,
     /// Interactive agents (main, forks) word `Running` as "active": we know
     /// there are recent entries, not that a task is executing.
     pub interactive: bool,
@@ -115,10 +117,17 @@ impl NodeContent for AgentNode {
 
         // Pulse: alive agents breathe on the shared animation clock (~1s
         // cycle at the default 120ms phase step) — the wide-shot heartbeat.
-        let glyph = if self.status == AgentStatus::Running && (ctx.animation_phase / 4) % 2 == 1 {
+        let glyph = if self.stuck.is_some() {
+            '⚠'
+        } else if self.status == AgentStatus::Running && (ctx.animation_phase / 4) % 2 == 1 {
             '○'
         } else {
             self.status.glyph()
+        };
+        let glyph_color = if self.stuck.is_some() {
+            look.roles.warn
+        } else {
+            glyph_color
         };
 
         // Title on the top border: " ◐ claude ". Budget: width minus the two
@@ -180,27 +189,35 @@ impl NodeContent for AgentNode {
             lines.push(Line::from(Span::styled(desc, bg_style.fg(palette.text))));
         }
 
-        // Tools row: "⚒ N · last_tool".
-        let tools_text = if let Some(last) = self.last_tool.as_ref() {
-            let prefix = format!("⚒ {} · ", self.tool_count);
-            let budget =
-                inner_w.saturating_sub(unicode_width::UnicodeWidthStr::width(prefix.as_str()));
-            format!("{prefix}{}", truncate(last, budget))
+        // Tools row: "⚒ N · last_tool", or what the agent is stuck on.
+        if let Some(tool) = &self.stuck {
+            lines.push(Line::from(Span::styled(
+                truncate(&format!("stuck on {tool}"), inner_w),
+                bg_style.fg(look.roles.warn),
+            )));
         } else {
-            format!("⚒ {} tools", self.tool_count)
-        };
-        lines.push(Line::from(Span::styled(
-            tools_text,
-            bg_style.fg(palette.subtle),
-        )));
+            let tools_text = if let Some(last) = self.last_tool.as_ref() {
+                let prefix = format!("⚒ {} · ", self.tool_count);
+                let budget =
+                    inner_w.saturating_sub(unicode_width::UnicodeWidthStr::width(prefix.as_str()));
+                format!("{prefix}{}", truncate(last, budget))
+            } else {
+                format!("⚒ {} tools", self.tool_count)
+            };
+            lines.push(Line::from(Span::styled(
+                tools_text,
+                bg_style.fg(palette.subtle),
+            )));
+        }
 
-        // Tokens row: "ctx 84.0k · 1.4k out" (the window share when known).
+        // Tokens row: "ctx 84.0k · 1.4k out", the window share when known, and
+        // colored as the window fills.
         let mut tokens = Vec::new();
         if self.context_tokens > 0 {
-            let ctx = match self.context_window.filter(|w| *w > 0) {
+            let ctx = match self.context_window {
                 Some(w) => format!(
                     "ctx {}% {}",
-                    (self.context_tokens.saturating_mul(100) / w).min(100),
+                    crate::settings::percent(self.context_tokens, w),
                     fmt_tokens(self.context_tokens)
                 ),
                 None => format!("ctx {}", fmt_tokens(self.context_tokens)),
@@ -211,9 +228,10 @@ impl NodeContent for AgentNode {
             tokens.push(format!("{} out", fmt_tokens(self.output_tokens)));
         }
         if !tokens.is_empty() {
+            let pressure = crate::settings::pressure(self.context_tokens, self.context_window);
             lines.push(Line::from(Span::styled(
                 truncate(&tokens.join(" · "), inner_w),
-                bg_style.fg(palette.subtle),
+                bg_style.fg(look.pressure(pressure)),
             )));
         }
 
@@ -293,6 +311,7 @@ mod tests {
             output_tokens: 1200,
             context_tokens: 0,
             context_window: None,
+            stuck: None,
             interactive: false,
         };
         let ctx = NodeRenderContext {

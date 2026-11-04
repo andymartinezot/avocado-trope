@@ -467,6 +467,7 @@ mod tests {
                     ts: None,
                     end_ts: None,
                     state: ToolState::Pending,
+                    error: None,
                 });
         }
         m
@@ -494,6 +495,7 @@ mod tests {
                     ts: None,
                     end_ts: None,
                     state: ToolState::Pending,
+                    error: None,
                 });
         }
         m

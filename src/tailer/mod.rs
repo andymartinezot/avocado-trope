@@ -46,7 +46,7 @@ pub(crate) use item::date_and_sort_live;
 // they pull tokio + the filesystem, so the `native` feature gates them out of the
 // portable core (the browser frontend feeds bytes straight in, no tailing).
 #[cfg(feature = "native")]
-mod bytes;
+pub(crate) mod bytes;
 #[cfg(feature = "native")]
 mod live;
 #[cfg(feature = "native")]

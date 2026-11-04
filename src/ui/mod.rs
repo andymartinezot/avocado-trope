@@ -33,7 +33,12 @@ use crate::state::{App, Camera, Mode, Transport};
 /// is selected, and draws the status bar (title, live/replay indicator, agent &
 /// tool counts, pause state, key hints).
 pub fn draw(frame: &mut Frame, app: &mut App) {
-    let full = frame.area();
+    let area = frame.area();
+    draw_in(frame, area, app);
+}
+
+/// [`draw`] into part of the frame: `compare` puts two sessions side by side.
+pub fn draw_in(frame: &mut Frame, full: Rect, app: &mut App) {
     // One header row on top (name, session, model, legend) when there's room
     // for the graph under it.
     let area = if full.height >= 12 {
@@ -51,9 +56,12 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     let show_scrubber = app.timeline.has_span();
     let show_log = show_scrubber && !app.session.prompts.is_empty();
     // Taller windows get a multi-row session log instead of the one-line narration.
+    let filtering = app.log_errors || app.log_editing || !app.log_query.is_empty();
     let log_rows: u16 = match area.height {
         h if h >= 40 => 5,
         h if h >= 30 => 3,
+        // A filter needs rows to show its matches whatever the window.
+        h if h >= 20 && filtering => 4,
         _ => 1,
     };
     let (canvas_area, timeline_area, status_area) = if show_scrubber {
@@ -81,7 +89,8 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
 
     // The session sidebar sits left of the canvas when there's width for both
     // and no detail panel is open (the panel needs the room).
-    let canvas_area = if app.show_sidebar && selected.is_none() && canvas_area.width >= 110 {
+    let min_width = if app.pin_sidebar { 60 } else { 110 };
+    let canvas_area = if app.show_sidebar && selected.is_none() && canvas_area.width >= min_width {
         let [side, rest] = Layout::horizontal([
             Constraint::Length(overview::SIDEBAR_WIDTH),
             Constraint::Fill(1),
@@ -699,7 +708,7 @@ fn render_help(frame: &mut Frame, area: Rect, palette: &rataflow::Palette) {
     use crate::state::session::AgentStatus;
     let look = crate::theme::current();
     let w = area.width.min(60);
-    let h = area.height.min(20);
+    let h = area.height.min(21);
     if w < 24 || h < 9 {
         return;
     }
@@ -758,7 +767,11 @@ fn render_help(frame: &mut Frame, area: Rect, palette: &rataflow::Palette) {
         ]),
         Line::from(vec![
             Span::styled(" sidebar   ", key),
-            Span::styled("b session summary on/off", txt),
+            Span::styled("b on/off · B pin in narrow windows", txt),
+        ]),
+        Line::from(vec![
+            Span::styled(" log       ", key),
+            Span::styled("e failures only · / search · esc clears", txt),
         ]),
         Line::from(vec![
             Span::styled(" theme     ", key),

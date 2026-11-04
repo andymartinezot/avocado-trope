@@ -1,6 +1,6 @@
-# zoetrope
+# avocado-trope
 
-Terminal UI that visualizes Claude Code and Codex agent sessions as a live flow graph. The same core also runs in the browser, compiled to wasm. Read-only, zero network.
+A fork of zoetrope. Terminal UI that visualizes Claude Code and Codex agent sessions as a live flow graph, plus a fleet view of every Herdr agent and side-by-side comparison. The same core also runs in the browser, compiled to wasm. Zero network. Reads transcripts; the only file it writes is the remembered theme (`src/prefs.rs`). `zoe fleet` runs `herdr` as a subprocess (fixed argv, no shell), the only process it starts apart from itself.
 
 Transcript formats enter through one boundary: `src/provider/` turns records into the facts in `src/fact.rs`, and nothing past it knows the format. See `docs/ARCHITECTURE.md` §0 before adding to either side.
 

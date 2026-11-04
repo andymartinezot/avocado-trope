@@ -291,6 +291,17 @@ impl UserEntry {
         })
     }
 
+    /// The file a successful `Write`/`Edit` changed, and whether it created it.
+    /// Read off `toolUseResult`, so a refused or failed edit states nothing.
+    pub fn changed_file(&self) -> Option<(String, bool)> {
+        let Some(StringOrValue::Value(v)) = &self.tool_use_result else {
+            return None;
+        };
+        let path = v.get("filePath")?.as_str()?;
+        let kind = v.get("type")?.as_str()?;
+        matches!(kind, "create" | "update").then(|| (path.to_string(), kind == "create"))
+    }
+
     /// Plain-string user text, if any (array-form content is tool
     /// results/attachments). This is the low-level extractor — it says nothing
     /// about *who* wrote the text: async agents' `<task-notification>` reports and
@@ -384,6 +395,20 @@ pub struct ToolResult {
 pub enum ToolResultContent {
     Text(String),
     Blocks(Vec<serde_json::Value>),
+}
+
+impl ToolResultContent {
+    /// The result's text: the string form, or the `text` of its blocks.
+    pub fn text(&self) -> String {
+        match self {
+            ToolResultContent::Text(t) => t.clone(),
+            ToolResultContent::Blocks(blocks) => blocks
+                .iter()
+                .filter_map(|b| b.get("text").and_then(|t| t.as_str()))
+                .collect::<Vec<_>>()
+                .join(" "),
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------

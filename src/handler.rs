@@ -58,6 +58,25 @@ fn handle_key(key: &KeyEvent, app: &mut App) -> bool {
         return false;
     }
 
+    // Typing a log search: every key belongs to the query.
+    if app.log_editing {
+        match key.code {
+            KeyCode::Esc => {
+                app.log_query.clear();
+                app.log_editing = false;
+            }
+            KeyCode::Enter => app.log_editing = false,
+            KeyCode::Backspace => {
+                app.log_query.pop();
+            }
+            KeyCode::Char(c) if !key.modifiers.contains(KeyModifiers::CONTROL) => {
+                app.log_query.push(c);
+            }
+            _ => {}
+        }
+        return false;
+    }
+
     let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
 
     match key.code {
@@ -144,15 +163,33 @@ fn handle_key(key: &KeyEvent, app: &mut App) -> bool {
             return false;
         }
 
-        // Session sidebar on/off.
-        KeyCode::Char('b') | KeyCode::Char('B') => {
+        // Session sidebar on/off; shift pins it open in narrow windows too.
+        KeyCode::Char('b') => {
             app.show_sidebar = !app.show_sidebar;
             return false;
         }
+        KeyCode::Char('B') => {
+            app.pin_sidebar = !app.pin_sidebar;
+            app.show_sidebar = true;
+            return false;
+        }
 
-        // Next color theme (presentation only).
+        // Session log: failures only, and text search.
+        KeyCode::Char('e') | KeyCode::Char('E') => {
+            app.log_errors = !app.log_errors;
+            return false;
+        }
+        KeyCode::Char('/') => {
+            app.log_editing = true;
+            return false;
+        }
+
+        // Next color theme (presentation only), remembered for the next launch.
         KeyCode::Char('t') | KeyCode::Char('T') => {
-            app.flow.theme = crate::theme::cycle().flow_theme();
+            let look = crate::theme::cycle();
+            app.flow.theme = look.flow_theme();
+            #[cfg(not(test))]
+            crate::prefs::save_theme(look.id);
             return false;
         }
 
@@ -177,6 +214,9 @@ fn handle_key(key: &KeyEvent, app: &mut App) -> bool {
                 app.show_help = false;
             } else if app.show_info {
                 app.show_info = false;
+            } else if app.log_errors || !app.log_query.is_empty() {
+                app.log_errors = false;
+                app.log_query.clear();
             } else if app.camera != Camera::Follow {
                 // Close the detail panel. In Follow esc is a no-op: the panel is
                 // part of Follow's contract (it auto-narrates the active agent),
@@ -395,6 +435,7 @@ mod tests {
                     output_tokens: 0,
                     context_tokens: 0,
                     context_window: None,
+                    stuck: None,
                     interactive: false,
                 },
             )
@@ -452,6 +493,7 @@ mod tests {
                 output_tokens: 0,
                 context_tokens: 0,
                 context_window: None,
+                stuck: None,
                 interactive: false,
             },
         );
@@ -467,6 +509,26 @@ mod tests {
         let i = Event::Key(KeyEvent::new(KeyCode::Char('i'), KeyModifiers::NONE));
         handle_event(&i, &mut app);
         assert!(!app.flow.locked, "'i' must not silently lock the viewport");
+    }
+
+    #[test]
+    fn a_search_takes_every_key_until_enter_and_esc_clears_it() {
+        let mut app = App::new("s".into(), crate::state::Mode::Replay);
+        let press =
+            |c, app: &mut App| handle_event(&Event::Key(KeyEvent::new(c, KeyModifiers::NONE)), app);
+        press(KeyCode::Char('/'), &mut app);
+        assert!(app.log_editing);
+        // `q` would quit outside a search.
+        assert!(!press(KeyCode::Char('q'), &mut app));
+        press(KeyCode::Char('x'), &mut app);
+        press(KeyCode::Backspace, &mut app);
+        assert_eq!(app.log_query, "q");
+        press(KeyCode::Enter, &mut app);
+        assert!(!app.log_editing);
+        press(KeyCode::Char('e'), &mut app);
+        assert!(app.log_errors);
+        press(KeyCode::Esc, &mut app);
+        assert!(!app.log_errors && app.log_query.is_empty());
     }
 
     #[test]
@@ -487,6 +549,7 @@ mod tests {
                 output_tokens: 0,
                 context_tokens: 0,
                 context_window: None,
+                stuck: None,
                 interactive: false,
             },
         );

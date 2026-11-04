@@ -12,6 +12,9 @@
 //! zoe --provider <name> ... force the transcript format instead of detecting it
 //! zoe --theme <name> ...    color theme (also $ZOE_THEME, or Herdr's theme)
 //! zoe inspect <file|id|dir> headless: print the session tree + info
+//! zoe inspect --json|--markdown <target>   the same as data, for scripts and PRs
+//! zoe fleet                 every agent Herdr knows about, on one screen
+//! zoe compare <a> <b>       two sessions side by side on one clock
 //! ```
 
 use std::path::PathBuf;
@@ -53,7 +56,34 @@ pub enum Cli {
     Inspect {
         target: String,
         provider: Option<Provider>,
+        format: Format,
     },
+    /// Every Herdr agent on one screen.
+    Fleet {
+        theme: Option<String>,
+        /// Seconds between polls.
+        interval: u64,
+        notify: bool,
+        /// Print one snapshot as JSON and exit.
+        json: bool,
+        /// Show made-up rows from this file instead of asking Herdr.
+        demo: Option<PathBuf>,
+    },
+    /// Two sessions side by side.
+    Compare {
+        a: String,
+        b: String,
+        speed: f64,
+        theme: Option<String>,
+    },
+}
+
+/// How `inspect` prints.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Format {
+    Text,
+    Json,
+    Markdown,
 }
 
 /// Default replay speed multiplier.
@@ -71,9 +101,19 @@ USAGE:
     zoe <file> --speed N    playback speed (default 8.0)
     zoe --provider <name>   force the format (claude, codex) instead of detecting it
     zoe --theme <name>      color theme: dracula (default), catppuccin, tokyo-night,
-                            gruvbox, nord, classic, terminal. Also $ZOE_THEME; inside
-                            Herdr it follows Herdr's theme. Press t to switch.
+                            gruvbox, nord, classic, terminal. Also $ZOE_THEME. Press t
+                            to switch; the choice is remembered. Inside Herdr it
+                            follows Herdr's theme until you pick one.
+    zoe --theme list        print the theme names
     zoe inspect <file|id>   headless: print the session tree + info
+        --json, --markdown  the same as data; contains prompts, paths and errors
+    zoe fleet               every agent in Herdr on one screen
+        --interval N        seconds between polls (default 2)
+        --notify            Herdr notification when an agent starts needing you
+        --json              print one snapshot and exit
+    zoe compare <a> <b>     two sessions side by side, replaying on one clock
+    --stuck-after N         flag a tool call open this many minutes (default 5)
+    --context-window N      tokens to assume when the transcript doesn't say
     zoe --version           print the version and exit
 
 Once open, scrub/follow/pause/go-live are available no matter how you launched.";
@@ -83,23 +123,137 @@ fn parse_cli(args: impl Iterator<Item = String>) -> Result<Cli> {
     // Skip argv[0].
     let mut args = args.skip(1).peekable();
 
-    let provider_flag = |args: &mut std::iter::Peekable<_>| -> Result<Option<Provider>> {
-        let v: String = args
-            .next()
-            .ok_or_else(|| anyhow!("--provider requires a name\n\n{USAGE}"))?;
-        Provider::parse(&v)
-            .map(Some)
-            .ok_or_else(|| anyhow!("unknown provider {v:?}; known: claude, codex"))
-    };
+    // Flags every command takes, taken out first so each command's own loop
+    // stays simple.
+    let mut rest = Vec::new();
+    let mut theme = None;
+    while let Some(arg) = args.next() {
+        match arg.as_str() {
+            "--theme" => {
+                let v = args
+                    .next()
+                    .ok_or_else(|| anyhow!("--theme requires a name\n\n{USAGE}"))?;
+                if v == "list" {
+                    println!("{}", zoetrope::theme::names().replace(", ", "\n"));
+                    std::process::exit(0);
+                }
+                if zoetrope::theme::find(&v).is_none() {
+                    bail!(
+                        "unknown theme {v:?}; choose one of: {}",
+                        zoetrope::theme::names()
+                    );
+                }
+                theme = Some(v);
+            }
+            "--stuck-after" => {
+                let v = args
+                    .next()
+                    .ok_or_else(|| anyhow!("--stuck-after requires minutes\n\n{USAGE}"))?;
+                let minutes: u64 = v
+                    .parse()
+                    .ok()
+                    .filter(|m| (1..=10_000).contains(m))
+                    .ok_or_else(|| {
+                        anyhow!("--stuck-after must be a number of minutes, got {v:?}")
+                    })?;
+                zoetrope::settings::set_stuck_after_secs(minutes * 60);
+            }
+            "--context-window" => {
+                let v = args
+                    .next()
+                    .ok_or_else(|| anyhow!("--context-window requires tokens\n\n{USAGE}"))?;
+                let tokens: u64 =
+                    v.parse().ok().filter(|t| *t > 0).ok_or_else(|| {
+                        anyhow!("--context-window must be a token count, got {v:?}")
+                    })?;
+                zoetrope::settings::set_context_window(tokens);
+            }
+            _ => rest.push(arg),
+        }
+    }
+    let mut args = rest.into_iter().peekable();
+    let provider_flag =
+        |args: &mut std::iter::Peekable<std::vec::IntoIter<String>>| -> Result<Option<Provider>> {
+            let v = args
+                .next()
+                .ok_or_else(|| anyhow!("--provider requires a name\n\n{USAGE}"))?;
+            Provider::parse(&v)
+                .map(Some)
+                .ok_or_else(|| anyhow!("unknown provider {v:?}; known: claude, codex"))
+        };
+
+    if args.peek().map(String::as_str) == Some("fleet") {
+        args.next();
+        let (mut interval, mut notify, mut json, mut demo) = (2u64, false, false, None);
+        while let Some(arg) = args.next() {
+            match arg.as_str() {
+                "--interval" => {
+                    let v = args
+                        .next()
+                        .ok_or_else(|| anyhow!("--interval requires seconds\n\n{USAGE}"))?;
+                    interval = v
+                        .parse()
+                        .ok()
+                        .filter(|s| (1..=3600).contains(s))
+                        .ok_or_else(|| anyhow!("--interval must be seconds, got {v:?}"))?;
+                }
+                "--notify" => notify = true,
+                "--json" => json = true,
+                "--demo" => {
+                    let v = args
+                        .next()
+                        .ok_or_else(|| anyhow!("--demo requires a file\n\n{USAGE}"))?;
+                    demo = Some(PathBuf::from(v));
+                }
+                other => bail!("unknown fleet argument {other:?}\n\n{USAGE}"),
+            }
+        }
+        return Ok(Cli::Fleet {
+            theme,
+            interval,
+            notify,
+            json,
+            demo,
+        });
+    }
+
+    if args.peek().map(String::as_str) == Some("compare") {
+        args.next();
+        let mut targets = Vec::new();
+        let mut speed = DEFAULT_REPLAY_SPEED;
+        while let Some(arg) = args.next() {
+            match arg.as_str() {
+                "--speed" => {
+                    let v = args
+                        .next()
+                        .ok_or_else(|| anyhow!("--speed requires a number\n\n{USAGE}"))?;
+                    speed = v
+                        .parse::<f64>()
+                        .ok()
+                        .filter(|s| s.is_finite() && *s > 0.0)
+                        .ok_or_else(|| anyhow!("--speed must be a positive number, got {v:?}"))?;
+                }
+                other if other.starts_with('-') => bail!("unknown flag {other:?}\n\n{USAGE}"),
+                _ => targets.push(arg),
+            }
+        }
+        let [a, b]: [String; 2] = targets
+            .try_into()
+            .map_err(|_| anyhow!("compare takes two sessions\n\n{USAGE}"))?;
+        return Ok(Cli::Compare { a, b, speed, theme });
+    }
 
     // `inspect <file>` is the one distinct (headless) subcommand.
     if args.peek().map(String::as_str) == Some("inspect") {
         args.next();
         let mut target: Option<String> = None;
         let mut provider = None;
+        let mut format = Format::Text;
         while let Some(arg) = args.next() {
             match arg.as_str() {
                 "--provider" => provider = provider_flag(&mut args)?,
+                "--json" => format = Format::Json,
+                "--markdown" => format = Format::Markdown,
                 other if other.starts_with('-') => bail!("unknown flag {other:?}\n\n{USAGE}"),
                 _ => {
                     if target.is_some() {
@@ -112,7 +266,11 @@ fn parse_cli(args: impl Iterator<Item = String>) -> Result<Cli> {
         let target = target.ok_or_else(|| {
             anyhow!("inspect requires a file, a session id or a directory\n\n{USAGE}")
         })?;
-        return Ok(Cli::Inspect { target, provider });
+        return Ok(Cli::Inspect {
+            target,
+            provider,
+            format,
+        });
     }
 
     // Otherwise: an optional positional target + flags.
@@ -120,7 +278,6 @@ fn parse_cli(args: impl Iterator<Item = String>) -> Result<Cli> {
     let mut follow = false;
     let mut speed = DEFAULT_REPLAY_SPEED;
     let mut provider = None;
-    let mut theme = None;
     while let Some(arg) = args.next() {
         match arg.as_str() {
             "-h" | "--help" => {
@@ -146,18 +303,6 @@ fn parse_cli(args: impl Iterator<Item = String>) -> Result<Cli> {
                 }
             }
             "--provider" => provider = provider_flag(&mut args)?,
-            "--theme" => {
-                let v = args
-                    .next()
-                    .ok_or_else(|| anyhow!("--theme requires a name\n\n{USAGE}"))?;
-                if zoetrope::theme::find(&v).is_none() {
-                    bail!(
-                        "unknown theme {v:?}; choose one of: {}",
-                        zoetrope::theme::names()
-                    );
-                }
-                theme = Some(v);
-            }
             other if other.starts_with('-') => {
                 bail!("unknown flag {other:?}\n\n{USAGE}");
             }
@@ -233,11 +378,95 @@ fn parse_session_fully(
 /// Run the `inspect` subcommand: fully parse the session and print a tree to
 /// stdout. Returns an error (non-zero exit) on an unreadable file. This is the
 /// headless smoke test — no TTY required.
-async fn run_inspect(target: String, provider: Option<Provider>) -> Result<()> {
+async fn run_inspect(target: String, provider: Option<Provider>, format: Format) -> Result<()> {
+    use zoetrope::state::{export, render};
     let target = resolve_target(target)?;
     let (model, info) = parse_session_fully(&target, provider)?;
-    print!("{}", zoetrope::state::render::report(&model, &info));
+    match format {
+        Format::Text => print!("{}", render::report(&model, &info)),
+        Format::Json => println!("{:#}", export::json(&model, &info)),
+        Format::Markdown => print!("{}", export::markdown(&model, &info)),
+    }
     Ok(())
+}
+
+/// Run `zoe fleet`: a poller publishing rows, and a screen drawing them.
+async fn run_fleet(
+    theme: Option<String>,
+    interval: u64,
+    notify: bool,
+    json: bool,
+    demo: Option<PathBuf>,
+) -> Result<()> {
+    use zoetrope::fleet::{self, Snapshot, Source};
+    let source = match &demo {
+        Some(path) => Source::demo(path).map_err(|e| anyhow!("{}: {e}", path.display()))?,
+        None => Source::Herdr,
+    };
+    let (tx, mut rx) = tokio::sync::watch::channel(Snapshot::default());
+    let poller = fleet::poll(source, std::time::Duration::from_secs(interval), notify, tx);
+    if json {
+        tokio::spawn(poller);
+        // The first complete snapshot: no session still being read.
+        loop {
+            rx.changed().await.context("the poller stopped")?;
+            let snap = rx.borrow_and_update().clone();
+            if let Some(e) = snap.error {
+                bail!(e);
+            }
+            if snap.loading == 0 {
+                println!("{}", serde_json::to_string_pretty(&snap.rows)?);
+                return Ok(());
+            }
+        }
+    }
+    pick_theme(theme);
+    tokio::spawn(poller);
+    fleet::view::run(rx, demo.is_some()).await
+}
+
+/// Start following one session: its app, and a tailer feeding it.
+async fn start_session(
+    target: Target,
+    provider: Option<Provider>,
+    mode: Mode,
+    replay: bool,
+    speed: f64,
+    session_id: String,
+) -> Result<zoetrope::compare::Side> {
+    let (tail_tx, tail_rx) = mpsc::channel::<TailRequest>(CHANNEL_CAP);
+    let (ui_tx, ui_rx) = mpsc::channel::<UiEvent>(CHANNEL_CAP);
+    tail_tx
+        .send(TailRequest::Watch(target))
+        .await
+        .map_err(|_| anyhow!("tailer channel closed before start"))?;
+    tokio::spawn(async move {
+        if let Err(e) = tailer::run(tail_rx, ui_tx.clone(), replay, speed, provider).await {
+            let _ = ui_tx.send(UiEvent::Error(e.to_string())).await;
+        }
+    });
+    Ok(zoetrope::compare::Side {
+        app: App::new(session_id, mode),
+        tail: tail_tx,
+        events: ui_rx,
+    })
+}
+
+/// Run `zoe compare`.
+async fn run_compare(a: String, b: String, speed: f64, theme: Option<String>) -> Result<()> {
+    pick_theme(theme);
+    let mut sides = Vec::new();
+    for arg in [a, b] {
+        let target = resolve_target(arg)?;
+        if matches!(target, Target::Here(_)) {
+            bail!("compare takes session files or ids, not directories");
+        }
+        let id = open(&target, None)?.id;
+        sides.push(start_session(target, None, Mode::Replay, true, speed, id).await?);
+    }
+    let right = sides.pop().context("two sides")?;
+    let left = sides.pop().context("two sides")?;
+    zoetrope::compare::run(left, right).await
 }
 
 /// Resolve a `View` invocation into (session id, target, mode, feeder, speed),
@@ -282,26 +511,10 @@ async fn run_tui(cli: Cli) -> Result<()> {
         }
     };
 
-    // Bounded request/event channels for backpressure.
-    let (tail_tx, tail_rx) = mpsc::channel::<TailRequest>(CHANNEL_CAP);
-    let (ui_tx, ui_rx) = mpsc::channel::<UiEvent>(CHANNEL_CAP);
-
-    // Kick off the watch before the tailer task starts consuming.
-    tail_tx
-        .send(TailRequest::Watch(target))
-        .await
-        .map_err(|_| anyhow!("tailer channel closed before start"))?;
-
-    // Spawn the tailer task — owns all files of the watched session.
-    tokio::spawn(async move {
-        if let Err(e) = tailer::run(tail_rx, ui_tx.clone(), replay, speed, provider).await {
-            let _ = ui_tx.send(UiEvent::Error(e.to_string())).await;
-        }
-    });
-
     pick_theme(theme);
-    let app = App::new(session_id, mode);
-    tui::run(app, tail_tx, ui_rx).await
+    // A session's id is fixed at launch here; the tailer may re-discover.
+    let side = start_session(target, provider, mode, replay, speed, session_id).await?;
+    tui::run(side.app, side.tail, side.events).await
 }
 
 /// What a positional argument means: an existing file is a session's file, an
@@ -322,8 +535,9 @@ fn resolve_target(arg: String) -> Result<Target> {
     Ok(Target::Id(arg))
 }
 
-/// Choose the launch theme: `--theme`, else `$ZOE_THEME`, else Herdr's theme
-/// when running inside a Herdr pane, else the default. A name we don't know
+/// Choose the launch theme: `--theme`, else `$ZOE_THEME`, else the theme you
+/// last switched to with `t`, else Herdr's theme when running inside a Herdr
+/// pane, else the default. A name we don't know
 /// (an env value, or a Herdr theme with no counterpart) keeps the default.
 fn pick_theme(flag: Option<String>) {
     let env = std::env::var("ZOE_THEME").ok().filter(|v| !v.is_empty());
@@ -331,7 +545,11 @@ fn pick_theme(flag: Option<String>) {
         std::env::var_os("HERDR_PANE_ID")?;
         herdr_theme(&read_capped(&herdr_config_path()?)?)
     };
-    if let Some(name) = flag.or(env).or_else(herdr) {
+    if let Some(name) = flag
+        .or(env)
+        .or_else(zoetrope::prefs::saved_theme)
+        .or_else(herdr)
+    {
         zoetrope::theme::set_by_name(&name);
     }
 }
@@ -405,7 +623,19 @@ async fn main() -> Result<()> {
 
     let cli = parse_cli(std::env::args())?;
     match cli {
-        Cli::Inspect { target, provider } => run_inspect(target, provider).await,
+        Cli::Inspect {
+            target,
+            provider,
+            format,
+        } => run_inspect(target, provider, format).await,
+        Cli::Fleet {
+            theme,
+            interval,
+            notify,
+            json,
+            demo,
+        } => run_fleet(theme, interval, notify, json, demo).await,
+        Cli::Compare { a, b, speed, theme } => run_compare(a, b, speed, theme).await,
         other => run_tui(other).await,
     }
 }
@@ -425,6 +655,39 @@ mod tests {
             Some("nord")
         );
         assert_eq!(herdr_theme(""), None);
+    }
+
+    #[test]
+    fn new_commands_parse() {
+        assert!(matches!(
+            cli(&["fleet", "--interval", "5", "--notify"]).unwrap(),
+            Cli::Fleet {
+                interval: 5,
+                notify: true,
+                ..
+            }
+        ));
+        assert!(cli(&["fleet", "--interval", "0"]).is_err());
+        assert!(cli(&["fleet", "stray"]).is_err());
+        assert!(matches!(
+            cli(&["compare", "a.jsonl", "b.jsonl", "--speed", "4"]).unwrap(),
+            Cli::Compare { .. }
+        ));
+        assert!(cli(&["compare", "a.jsonl"]).is_err());
+        assert!(matches!(
+            cli(&["inspect", "--json", "x.jsonl"]).unwrap(),
+            Cli::Inspect {
+                format: Format::Json,
+                ..
+            }
+        ));
+        assert!(cli(&["x.jsonl", "--stuck-after", "0"]).is_err());
+        assert!(cli(&["x.jsonl", "--context-window", "nope"]).is_err());
+        // Global flags work before the subcommand too.
+        assert!(matches!(
+            cli(&["--theme", "nord", "fleet"]).unwrap(),
+            Cli::Fleet { .. }
+        ));
     }
 
     #[test]
@@ -540,7 +803,9 @@ mod tests {
     #[test]
     fn inspect_takes_one_target_and_a_provider() {
         match cli(&["inspect", "s.jsonl"]).unwrap() {
-            Cli::Inspect { target, provider } => {
+            Cli::Inspect {
+                target, provider, ..
+            } => {
                 assert_eq!(target, "s.jsonl");
                 assert_eq!(provider, None);
             }

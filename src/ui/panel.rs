@@ -149,8 +149,9 @@ pub fn render(frame: &mut Frame, area: Rect, app: &mut App, agent_id: &str) {
     } else {
         0
     };
+    let header_rows = if agent.files.is_empty() { 6 } else { 7 };
     let [header_area, prov_area, tools_area] = Layout::vertical([
-        Constraint::Length(6),
+        Constraint::Length(header_rows),
         Constraint::Length(prov_rows),
         Constraint::Fill(1),
     ])
@@ -218,6 +219,25 @@ fn render_header(frame: &mut Frame, area: Rect, agent: &AgentInfo, palette: &rat
         ),
         bg.fg(palette.muted),
     )));
+
+    // Files this agent changed, by name: the panel is narrow.
+    if !agent.files.is_empty() {
+        let names: Vec<&str> = agent
+            .files
+            .keys()
+            .map(|p| p.rsplit('/').next().unwrap_or(p))
+            .collect();
+        let created = agent.files.values().filter(|c| **c).count();
+        let new = if created > 0 {
+            format!(" ({created} new)")
+        } else {
+            String::new()
+        };
+        lines.push(Line::from(Span::styled(
+            format!("✎ {} files{new}: {}", names.len(), names.join(", ")),
+            bg.fg(palette.subtle),
+        )));
+    }
 
     // Description (wrapped) on the remaining rows.
     if let Some(desc) = agent.description.as_ref().filter(|d| !d.is_empty()) {
@@ -344,7 +364,7 @@ fn render_tools(
         } else {
             None
         };
-        total += wrapped.as_ref().map_or(0, Vec::len) + 1;
+        total += wrapped.as_ref().map_or(0, Vec::len) + tool_rows(tc);
         headers.push(wrapped);
     }
 
@@ -367,7 +387,7 @@ fn render_tools(
     let mut idx = 0usize;
     let mut first_built: Option<usize> = None;
     for (tc, wrapped) in agent.tool_calls.iter().zip(&headers) {
-        let rows = wrapped.as_ref().map_or(0, Vec::len) + 1;
+        let rows = wrapped.as_ref().map_or(0, Vec::len) + tool_rows(tc);
         if idx + rows > view_start && idx < view_end {
             if first_built.is_none() {
                 first_built = Some(idx);
@@ -388,6 +408,12 @@ fn render_tools(
                 }
             }
             lines.push(tool_line(tc, width, palette));
+            if let Some(err) = &tc.error {
+                lines.push(Line::from(Span::styled(
+                    format!("  └ {}", truncate(err, width.saturating_sub(4))),
+                    bg.fg(palette.error),
+                )));
+            }
         }
         idx += rows;
         if idx >= view_end {
@@ -399,6 +425,11 @@ fn render_tools(
         Paragraph::new(lines).style(bg).scroll((local_scroll, 0)),
         inner,
     );
+}
+
+/// Rows one call takes: itself, plus what it reported when it failed.
+fn tool_rows(tc: &crate::state::session::ToolCallInfo) -> usize {
+    1 + usize::from(tc.error.is_some())
 }
 
 /// Resolve the panel's scroll offset for one render: clamp to the reachable
@@ -437,11 +468,12 @@ fn era_header_flags(
             headers += 1;
         }
     }
+    let rows: usize = agent.tool_calls.iter().map(tool_rows).sum();
     // Single-era lists get no headers — the provenance section names it.
     if distinct <= 1 {
-        return (vec![false; agent.tool_calls.len()], agent.tool_calls.len());
+        return (vec![false; agent.tool_calls.len()], rows);
     }
-    (flags, agent.tool_calls.len() + headers)
+    (flags, rows + headers)
 }
 
 /// One row of the tool-call list: state glyph, name, summary, local time.
@@ -570,6 +602,7 @@ mod tests {
                 ts: Some(ts.parse().unwrap()),
                 end_ts: None,
                 state: ToolState::Ok,
+                error: None,
             });
         }
         let agent = m.agent(crate::state::session::MAIN_ID).unwrap();

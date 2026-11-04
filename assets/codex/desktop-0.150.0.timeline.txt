@@ -28,7 +28,7 @@
 2026-08-26T16:10:56.424+00:00  Activity@main
 2026-08-26T16:10:57.477+00:00  ToolStart@main
 2026-08-26T16:10:59.402+00:00  ToolStart@main ToolEnd@main
-2026-08-26T16:10:59.407+00:00  ToolEnd@main
+2026-08-26T16:10:59.407+00:00  ToolEnd@main ToolError@main
 2026-08-26T16:10:59.408+00:00  Tokens@main Context@main
 2026-08-26T16:11:00.899+00:00  Activity@main
 2026-08-26T16:11:00.900+00:00  Activity@main
@@ -226,7 +226,7 @@
 2026-08-26T16:14:14.226+00:00  Activity@main
 2026-08-26T16:14:14.376+00:00  ToolStart@main
 2026-08-26T16:14:21.802+00:00  ToolStart@01a03ed9-3cf6-7ab0-ae72-18a79cec8ba5
-2026-08-26T16:14:22.078+00:00  ToolStart@01a03ed9-3cf6-7ab0-ae72-18a79cec8ba5 ToolEnd@01a03ed9-3cf6-7ab0-ae72-18a79cec8ba5
+2026-08-26T16:14:22.078+00:00  ToolStart@01a03ed9-3cf6-7ab0-ae72-18a79cec8ba5 ToolEnd@01a03ed9-3cf6-7ab0-ae72-18a79cec8ba5 File@01a03ed9-3cf6-7ab0-ae72-18a79cec8ba5 File@01a03ed9-3cf6-7ab0-ae72-18a79cec8ba5 File@01a03ed9-3cf6-7ab0-ae72-18a79cec8ba5
 2026-08-26T16:14:22.081+00:00  ToolEnd@01a03ed9-3cf6-7ab0-ae72-18a79cec8ba5
 2026-08-26T16:14:22.082+00:00  Tokens@01a03ed9-3cf6-7ab0-ae72-18a79cec8ba5 Context@01a03ed9-3cf6-7ab0-ae72-18a79cec8ba5
 2026-08-26T16:14:23.795+00:00  Activity@01a03ed9-3cf6-7ab0-ae72-18a79cec8ba5
@@ -381,7 +381,7 @@
 2026-08-26T16:15:30.937+00:00  Activity@main
 2026-08-26T16:15:30.940+00:00  Activity@main
 2026-08-26T16:15:35.922+00:00  ToolStart@main
-2026-08-26T16:15:36.137+00:00  ToolStart@main ToolEnd@main
+2026-08-26T16:15:36.137+00:00  ToolStart@main ToolEnd@main File@main File@main
 2026-08-26T16:15:36.141+00:00  ToolEnd@main
 2026-08-26T16:15:36.142+00:00  Tokens@main Context@main
 2026-08-26T16:15:39.751+00:00  Activity@main

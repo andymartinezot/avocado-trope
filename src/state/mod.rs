@@ -8,6 +8,7 @@
 
 // Two projections of the model. Crate-private: what the frontends need from
 // them is re-exported below, as the types of `App`'s fields.
+pub mod export;
 pub(crate) mod graph;
 pub mod info;
 pub mod render;
@@ -215,6 +216,14 @@ pub struct App {
     pub show_info: bool,
     /// The session sidebar (`b`), drawn when the window is wide enough.
     pub show_sidebar: bool,
+    /// Keep the sidebar in windows too narrow for it by default (`B`).
+    pub pin_sidebar: bool,
+    /// Session log: failed tool calls only (`e`).
+    pub log_errors: bool,
+    /// Session log: text filter (`/`), case-insensitive.
+    pub log_query: String,
+    /// Keys are going into `log_query`.
+    pub log_editing: bool,
     /// Node id awaiting a center-glide, set on a user selection and consumed by
     /// `draw` AFTER the flow has rendered into the split (narrower) canvas —
     /// `center_on` probes the last-rendered size, so centering at event time
@@ -257,6 +266,10 @@ impl App {
             session_info: SessionInfo::default(),
             show_info: false,
             show_sidebar: true,
+            pin_sidebar: false,
+            log_errors: false,
+            log_query: String::new(),
+            log_editing: false,
             pending_center: None,
             pending_seek: None,
             snapshots: Vec::new(),
@@ -821,7 +834,8 @@ impl App {
     /// stale centering must not wait for the next batch.
     pub fn status_tick(&mut self) {
         let now = self.timeline.now_reference();
-        if self.session.recompute_liveness(now) {
+        let stuck = self.session.recompute_stuck(now);
+        if self.session.recompute_liveness(now) || stuck {
             self.session.recompute_group_status();
             // Status flips never change topology, so this is a content-only sync;
             // layout stays user-driven (no auto-relayout — see `resync`).

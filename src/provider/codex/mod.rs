@@ -225,6 +225,14 @@ impl Stream {
                                 call: call.clone(),
                                 outcome,
                             }));
+                            if outcome == Outcome::Err
+                                && let Some(head) = output.head()
+                            {
+                                out.push(by(FactKind::ToolError {
+                                    call: call.clone(),
+                                    text: head.to_string(),
+                                }));
+                            }
                         }
                     }
                     ResponseItem::Reasoning { .. }
@@ -365,7 +373,20 @@ impl Stream {
                     Some("failed") => Outcome::Err,
                     _ => Outcome::Ok,
                 };
+                let failed = outcome == Outcome::Err;
                 ran(&f.id, "apply_patch".into(), summary, outcome);
+                if !failed {
+                    for (path, change) in &f.changes {
+                        out.push(Fact {
+                            agent: Some(owner.to_string()),
+                            ts: completed.or(started),
+                            kind: FactKind::File {
+                                path: short_path(path, self.cwd.as_deref()),
+                                created: change.get("type").and_then(|t| t.as_str()) == Some("add"),
+                            },
+                        });
+                    }
+                }
             }
             Item::SubAgentActivity(a) => {
                 let Some(child) = &a.agent_thread_id else {
