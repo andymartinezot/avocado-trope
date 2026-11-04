@@ -10,6 +10,7 @@
 //! zoe <file> --follow       follow a file's live edge instead of replaying
 //! zoe <file> --speed N      playback speed multiplier (default 8.0)
 //! zoe --provider <name> ... force the transcript format instead of detecting it
+//! zoe --theme <name> ...    color theme (also $ZOE_THEME, or Herdr's theme)
 //! zoe inspect <file|id|dir> headless: print the session tree + info
 //! ```
 
@@ -44,6 +45,8 @@ pub enum Cli {
         follow: bool,
         speed: f64,
         provider: Option<Provider>,
+        /// `--theme`: wins over `$ZOE_THEME` and Herdr's theme.
+        theme: Option<String>,
     },
     /// Headless: parse and print the session tree + info; no TUI. The target
     /// resolves like `View`'s: a file, a session id, or a project directory.
@@ -67,6 +70,9 @@ USAGE:
     zoe <file> --follow     follow a file's live edge instead of replaying
     zoe <file> --speed N    playback speed (default 8.0)
     zoe --provider <name>   force the format (claude, codex) instead of detecting it
+    zoe --theme <name>      color theme: dracula (default), catppuccin, tokyo-night,
+                            gruvbox, nord, classic, terminal. Also $ZOE_THEME; inside
+                            Herdr it follows Herdr's theme. Press t to switch.
     zoe inspect <file|id>   headless: print the session tree + info
     zoe --version           print the version and exit
 
@@ -114,6 +120,7 @@ fn parse_cli(args: impl Iterator<Item = String>) -> Result<Cli> {
     let mut follow = false;
     let mut speed = DEFAULT_REPLAY_SPEED;
     let mut provider = None;
+    let mut theme = None;
     while let Some(arg) = args.next() {
         match arg.as_str() {
             "-h" | "--help" => {
@@ -139,6 +146,18 @@ fn parse_cli(args: impl Iterator<Item = String>) -> Result<Cli> {
                 }
             }
             "--provider" => provider = provider_flag(&mut args)?,
+            "--theme" => {
+                let v = args
+                    .next()
+                    .ok_or_else(|| anyhow!("--theme requires a name\n\n{USAGE}"))?;
+                if zoetrope::theme::find(&v).is_none() {
+                    bail!(
+                        "unknown theme {v:?}; choose one of: {}",
+                        zoetrope::theme::names()
+                    );
+                }
+                theme = Some(v);
+            }
             other if other.starts_with('-') => {
                 bail!("unknown flag {other:?}\n\n{USAGE}");
             }
@@ -156,6 +175,7 @@ fn parse_cli(args: impl Iterator<Item = String>) -> Result<Cli> {
         follow,
         speed,
         provider,
+        theme,
     })
 }
 
@@ -233,6 +253,7 @@ async fn run_tui(cli: Cli) -> Result<()> {
         follow,
         speed,
         provider,
+        theme,
     } = cli
     else {
         unreachable!("inspect handled in main");
@@ -278,6 +299,7 @@ async fn run_tui(cli: Cli) -> Result<()> {
         }
     });
 
+    pick_theme(theme);
     let app = App::new(session_id, mode);
     tui::run(app, tail_tx, ui_rx).await
 }
@@ -298,6 +320,53 @@ fn resolve_target(arg: String) -> Result<Target> {
         bail!("not found: {}", path.display());
     }
     Ok(Target::Id(arg))
+}
+
+/// Choose the launch theme: `--theme`, else `$ZOE_THEME`, else Herdr's theme
+/// when running inside a Herdr pane, else the default. A name we don't know
+/// (an env value, or a Herdr theme with no counterpart) keeps the default.
+fn pick_theme(flag: Option<String>) {
+    let env = std::env::var("ZOE_THEME").ok().filter(|v| !v.is_empty());
+    let herdr = || {
+        std::env::var_os("HERDR_PANE_ID")?;
+        herdr_theme(&std::fs::read_to_string(herdr_config_path()?).ok()?)
+    };
+    if let Some(name) = flag.or(env).or_else(herdr) {
+        zoetrope::theme::set_by_name(&name);
+    }
+}
+
+/// Herdr's config file: `$HERDR_CONFIG_PATH`, else `<config dir>/herdr/config.toml`.
+fn herdr_config_path() -> Option<PathBuf> {
+    if let Some(p) = std::env::var_os("HERDR_CONFIG_PATH") {
+        return Some(PathBuf::from(p));
+    }
+    let base = std::env::var_os("XDG_CONFIG_HOME")
+        .map(PathBuf::from)
+        .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".config")))?;
+    Some(base.join("herdr").join("config.toml"))
+}
+
+/// `name` under `[theme]` in a Herdr config. A line scan rather than a TOML
+/// parser: the key is a plain `name = "…"` string in one known table.
+fn herdr_theme(config: &str) -> Option<String> {
+    let mut in_theme = false;
+    for line in config.lines() {
+        let line = line.trim();
+        if line.starts_with('[') {
+            in_theme = line == "[theme]";
+            continue;
+        }
+        if !in_theme {
+            continue;
+        }
+        if let Some(value) = line.strip_prefix("name").map(str::trim_start) {
+            let value = value.strip_prefix('=')?.trim();
+            let value = value.split('#').next()?.trim().trim_matches(['"', '\'']);
+            return (!value.is_empty()).then(|| value.to_string());
+        }
+    }
+    None
 }
 
 #[tokio::main]
@@ -321,6 +390,21 @@ async fn main() -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn reads_herdr_theme_name() {
+        let cfg = "onboarding = false\n[ui]\nname = \"no\"\n[theme]\nname = \"tokyo-night\" # mine\nauto_switch = false\n[ui.toast]\n";
+        assert_eq!(herdr_theme(cfg).as_deref(), Some("tokyo-night"));
+        assert_eq!(herdr_theme("[theme.custom]\nname = \"x\"\n"), None);
+        assert_eq!(herdr_theme(""), None);
+    }
+
+    #[test]
+    fn theme_flag_is_validated() {
+        assert!(cli(&["--theme", "nord"]).is_ok());
+        assert!(cli(&["--theme", "nope"]).is_err());
+        assert!(cli(&["--theme"]).is_err());
+    }
     use zoetrope::state::session::AgentStatus;
 
     fn cli(args: &[&str]) -> Result<Cli> {
@@ -384,6 +468,7 @@ mod tests {
                 follow,
                 speed,
                 provider,
+                ..
             } => {
                 assert_eq!(p, "s.jsonl");
                 assert_eq!(speed, 4.0);

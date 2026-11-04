@@ -144,6 +144,12 @@ fn handle_key(key: &KeyEvent, app: &mut App) -> bool {
             return false;
         }
 
+        // Next color theme (presentation only).
+        KeyCode::Char('t') | KeyCode::Char('T') => {
+            app.flow.theme = crate::theme::cycle().flow_theme();
+            return false;
+        }
+
         // Help overlay.
         KeyCode::Char('?') => {
             app.show_help = !app.show_help;
@@ -374,6 +380,8 @@ mod tests {
                 (10.0, 5.0),
                 crate::ui::nodes::AgentNode {
                     title: id.into(),
+                    kind: crate::fact::AgentKind::Subagent,
+                    model: None,
                     description: None,
                     status: crate::state::session::AgentStatus::Running,
                     tool_count: 0,
@@ -427,6 +435,8 @@ mod tests {
             (10.0, 5.0),
             crate::ui::nodes::AgentNode {
                 title: "a".into(),
+                kind: crate::fact::AgentKind::Subagent,
+                model: None,
                 description: None,
                 status: crate::state::session::AgentStatus::Running,
                 tool_count: 0,
@@ -458,6 +468,8 @@ mod tests {
             (10.0, 5.0),
             crate::ui::nodes::AgentNode {
                 title: "a".into(),
+                kind: crate::fact::AgentKind::Subagent,
+                model: None,
                 description: None,
                 status: crate::state::session::AgentStatus::Running,
                 tool_count: 0,

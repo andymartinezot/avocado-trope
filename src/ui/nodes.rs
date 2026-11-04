@@ -1,8 +1,9 @@
 //! [`AgentNode`]: the `NodeContent` for an agent card.
 //!
-//! Renders a bordered card showing the agent type, a status glyph + color,
-//! a truncated description, a tool count, the last tool name, and an output
-//! token count. Visual state (status, tool tallies) is mirrored from the
+//! Renders a bordered card: the border and the title on it (status glyph +
+//! agent type) take the agent kind's role color, then the model and status
+//! word, a truncated description, a tool count with the last tool name, and an
+//! output token count. Visual state (status, tool tallies) is mirrored from the
 //! domain model into the node via `flow.node_content_mut` on each sync, so the
 //! card needs no back-reference to the `SessionModel`.
 
@@ -11,8 +12,10 @@ use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
+use ratatui::widgets::BorderType;
 use ratatui::widgets::{Block, Borders, Padding, Paragraph, Widget};
 
+use crate::fact::AgentKind;
 use crate::state::session::AgentStatus;
 
 /// Fixed card dimensions for main / workflow nodes (world units).
@@ -36,6 +39,10 @@ pub struct AgentNode {
     /// Title line — the agent type, which for the main agent is the provider's
     /// own name (`claude`, `codex`).
     pub title: String,
+    /// Picks the role color of the border and title.
+    pub kind: AgentKind,
+    /// Model id as recorded (`claude-opus-4-1-…`); shown shortened.
+    pub model: Option<String>,
     /// Truncated description shown under the title.
     pub description: Option<String>,
     pub status: AgentStatus,
@@ -74,7 +81,7 @@ impl NodeContent for AgentNode {
 
         // Single-source vocabulary + presence colors (cards/panel/inspect
         // share them; only the pulse override below is card-specific).
-        let glyph_color = crate::ui::status_color(self.status, &palette);
+        let glyph_color = crate::ui::status_color(self.status);
         let status_text = crate::state::session::status_word(self.status, self.interactive);
 
         // Cell level (semantic zoom): too small for any text — a bordered card
@@ -92,18 +99,42 @@ impl NodeContent for AgentNode {
             return;
         }
 
-        let border_color = if ctx.selected {
-            palette.accent
-        } else {
-            palette.muted
-        };
+        let look = crate::theme::current();
+        let role_color = look.role(self.kind);
         let bg_style = Style::default().bg(palette.surface);
+        // Selection: thick border in the accent, so it never reads as a role.
+        let (border_color, border_type) = if ctx.selected {
+            (palette.accent, BorderType::Thick)
+        } else {
+            (role_color, BorderType::Plain)
+        };
         let border_style = bg_style.fg(border_color);
 
+        // Pulse: alive agents breathe on the shared animation clock (~1s
+        // cycle at the default 120ms phase step) — the wide-shot heartbeat.
+        let glyph = if self.status == AgentStatus::Running && (ctx.animation_phase / 4) % 2 == 1 {
+            '○'
+        } else {
+            self.status.glyph()
+        };
+
+        // Title on the top border: " ◐ claude ". Budget: width minus the two
+        // corners, the glyph, and three spaces around it.
+        let title_budget = (area.width as usize).saturating_sub(6);
+        let title = truncate(&self.title, title_budget);
         let mut block = Block::default()
             .borders(Borders::ALL)
+            .border_type(border_type)
             .border_style(border_style)
-            .style(bg_style);
+            .style(bg_style)
+            .title(Line::from(vec![
+                Span::styled(" ", bg_style),
+                Span::styled(format!("{glyph} "), bg_style.fg(glyph_color)),
+                Span::styled(
+                    format!("{title} "),
+                    bg_style.fg(role_color).add_modifier(Modifier::BOLD),
+                ),
+            ]));
 
         // Only pad when there's horizontal room to spare.
         if area.width >= 4 {
@@ -116,34 +147,34 @@ impl NodeContent for AgentNode {
         if inner.width == 0 || inner.height == 0 {
             return;
         }
-
-        // Pulse: alive agents breathe on the shared animation clock (~1s
-        // cycle at the default 120ms phase step) — the wide-shot heartbeat.
-        let glyph = if self.status == AgentStatus::Running && (ctx.animation_phase / 4) % 2 == 1 {
-            '○'
-        } else {
-            self.status.glyph()
-        };
         let inner_w = inner.width as usize;
-
-        // Title row: status glyph + agent type, bold.
-        let title_budget = inner_w.saturating_sub(2); // glyph + space
-        let title = truncate(&self.title, title_budget);
-        let title_line = Line::from(vec![
-            Span::styled(format!("{glyph} "), bg_style.fg(glyph_color)),
-            Span::styled(
-                title,
-                bg_style.fg(palette.text).add_modifier(Modifier::BOLD),
-            ),
-        ]);
 
         // Build the candidate lines in priority order.
         let mut lines: Vec<Line> = Vec::new();
-        lines.push(title_line);
+
+        // Model + status: "Opus 4.1 · running". When both don't fit, the model
+        // wins: the title's glyph already carries the status.
+        let mut head = Vec::new();
+        let status_w = status_text.chars().count();
+        if let Some(model) = self.model.as_deref().filter(|m| !m.is_empty()) {
+            let model = crate::theme::short_model(model);
+            let fits_both = model.chars().count() + 3 + status_w <= inner_w;
+            head.push(Span::styled(
+                truncate(&model, inner_w),
+                bg_style.fg(role_color),
+            ));
+            if fits_both {
+                head.push(Span::styled(" · ", bg_style.fg(palette.subtle)));
+                head.push(Span::styled(status_text, bg_style.fg(glyph_color)));
+            }
+        } else {
+            head.push(Span::styled(status_text, bg_style.fg(glyph_color)));
+        }
+        lines.push(Line::from(head));
 
         if let Some(desc) = self.description.as_ref().filter(|d| !d.is_empty()) {
             let desc = truncate(desc, inner_w);
-            lines.push(Line::from(Span::styled(desc, bg_style.fg(palette.subtle))));
+            lines.push(Line::from(Span::styled(desc, bg_style.fg(palette.text))));
         }
 
         // Tools row: "⚒ N · last_tool".
@@ -157,20 +188,15 @@ impl NodeContent for AgentNode {
         };
         lines.push(Line::from(Span::styled(
             tools_text,
-            bg_style.fg(palette.accent),
+            bg_style.fg(palette.subtle),
         )));
 
-        // Footer row: status word + token count, separated to the edges.
-        let tokens = fmt_tokens(self.output_tokens);
-        let footer = if self.output_tokens > 0 {
-            Line::from(vec![
-                Span::styled(status_text, bg_style.fg(glyph_color)),
-                Span::styled(format!("  {tokens} tok"), bg_style.fg(palette.muted)),
-            ])
-        } else {
-            Line::from(Span::styled(status_text, bg_style.fg(glyph_color)))
-        };
-        lines.push(footer);
+        if self.output_tokens > 0 {
+            lines.push(Line::from(Span::styled(
+                format!("{} tok out", fmt_tokens(self.output_tokens)),
+                bg_style.fg(palette.subtle),
+            )));
+        }
 
         // Each row is one cell tall, stacked from the top; render only what fits.
         for (i, line) in lines.into_iter().enumerate() {
@@ -239,6 +265,8 @@ mod tests {
 
         let node = AgentNode {
             title: "claude".into(),
+            kind: AgentKind::Main,
+            model: Some("claude-opus-4-1-20250805".into()),
             description: None,
             status: AgentStatus::Done,
             tool_count: 3,
@@ -264,27 +292,39 @@ mod tests {
     fn card_level_renders_text() {
         let area = ratatui::layout::Rect::new(0, 0, 24, 6);
         let buf = render_into(area);
-        let text: String = (0..area.width).map(|x| buf[(x, 1)].symbol()).collect();
+        let row = |y| {
+            (0..area.width)
+                .map(|x| buf[(x, y)].symbol())
+                .collect::<String>()
+        };
+        let (top, first) = (row(0), row(1));
         assert!(
-            text.contains("claude"),
-            "card level must show title: {text}"
+            top.contains("claude"),
+            "title sits on the top border: {top}"
+        );
+        assert!(
+            first.contains("Opus 4.1"),
+            "first row shows the model: {first}"
+        );
+        assert!(
+            first.contains("done"),
+            "first row shows the status: {first}"
         );
     }
 
     #[test]
     fn cell_level_renders_status_fill() {
-        use rataflow::Theme;
         use ratatui::style::Color;
 
         // Below the text threshold: solid status-colored fill, no border.
         let area = ratatui::layout::Rect::new(0, 0, 6, 2);
         let buf = render_into(area);
-        let palette = Theme::default().palette();
+        let done = crate::theme::current().status(AgentStatus::Done);
         for y in 0..area.height {
             for x in 0..area.width {
                 let cell = &buf[(x, y)];
                 assert_eq!(cell.symbol(), " ", "cell level draws no text/border");
-                assert_eq!(cell.style().bg, Some(palette.accent)); // Done = calm accent
+                assert_eq!(cell.style().bg, Some(done));
                 assert_ne!(cell.style().bg, Some(Color::Reset));
             }
         }

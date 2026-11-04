@@ -24,6 +24,14 @@
   <img src="https://raw.githubusercontent.com/furkankly/zoetrope/main/assets/zoetrope.svg" alt="A session drawn as a flow graph: a main agent above the subagents it spawned, over a timeline of tool activity" width="620">
 </p>
 
+> **avocado-trope** is a fork of [zoetrope](https://github.com/furkankly/zoetrope) with a
+> restyled UI: cards colored by role (main agent, subagents, workflows), the model on
+> every card, a header with a legend, and color themes. Choose one with
+> `zoe --theme <name>` or `$ZOE_THEME`, or press `t` to switch while it runs: `dracula`
+> (default), `catppuccin`, `tokyo-night`, `gruvbox`, `nord`, `classic` (the original
+> zoetrope look) or `terminal` (your terminal's own colors, for light themes too).
+> Inside a [Herdr](https://herdr.dev) pane it follows Herdr's theme.
+
 Claude Code and Codex write a transcript for every session. zoetrope reads it and draws
 the session as a graph in your terminal: the main agent, the agents it spawns, and the
 tools each one runs, updating live as it goes. Point it at a finished run and it replays,

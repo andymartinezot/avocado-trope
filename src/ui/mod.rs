@@ -32,7 +32,17 @@ use crate::state::{App, Camera, Mode, Transport};
 /// is selected, and draws the status bar (title, live/replay indicator, agent &
 /// tool counts, pause state, key hints).
 pub fn draw(frame: &mut Frame, app: &mut App) {
-    let area = frame.area();
+    let full = frame.area();
+    // One header row on top (name, session, model, legend) when there's room
+    // for the graph under it.
+    let area = if full.height >= 12 {
+        let [header, rest] =
+            Layout::vertical([Constraint::Length(1), Constraint::Fill(1)]).areas(full);
+        render_header(frame, header, app);
+        rest
+    } else {
+        full
+    };
 
     // Top: canvas (fill); one bordered timeline panel — the scrubber (6 rows),
     // plus an event-log line and a single divider on top when the session has
@@ -101,6 +111,95 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     }
     if app.show_info {
         render_info(frame, area, app);
+    }
+}
+
+/// Header row: the wordmark, the session title and the main agent's model on
+/// the left; the color legend (roles, then status glyphs) on the right, dropped
+/// first when the row is too narrow.
+fn render_header(frame: &mut Frame, area: Rect, app: &App) {
+    use crate::fact::AgentKind;
+    use crate::state::session::AgentStatus;
+
+    let look = crate::theme::current();
+    let palette = app.flow.theme.palette();
+    let bg = Style::default().bg(palette.canvas_bg);
+    frame.render_widget(Block::default().style(bg), area);
+
+    // A format with no title record (Codex) is described by its first prompt.
+    let title = app
+        .session_info
+        .title
+        .as_deref()
+        .or_else(|| app.session.first_prompt())
+        .unwrap_or("session");
+    let model = app
+        .session
+        .agent("main")
+        .and_then(|a| a.model.as_deref())
+        .map(crate::theme::short_model);
+
+    let mut legend: Vec<Span> = Vec::new();
+    for (kind, word) in [
+        (AgentKind::Main, "main"),
+        (AgentKind::Subagent, "subagent"),
+        (AgentKind::Group, "workflow"),
+    ] {
+        legend.push(Span::styled("■ ", bg.fg(look.role(kind))));
+        legend.push(Span::styled(format!("{word}  "), bg.fg(palette.subtle)));
+    }
+    legend.push(Span::styled("│  ", bg.fg(palette.muted)));
+    for (status, word) in [
+        (AgentStatus::Running, "running"),
+        (AgentStatus::Done, "done"),
+        (AgentStatus::Failed, "failed"),
+    ] {
+        legend.push(Span::styled(
+            format!("{} ", status.glyph()),
+            bg.fg(look.status(status)),
+        ));
+        legend.push(Span::styled(format!("{word}  "), bg.fg(palette.subtle)));
+    }
+    let legend_w: usize = legend.iter().map(|s| s.width()).sum();
+
+    let mark = " avocado-trope ";
+    let model_w = model.as_ref().map_or(0, |m| m.chars().count() + 3);
+    let fixed = mark.chars().count() + 2 + model_w;
+    let show_legend = (area.width as usize) >= fixed + 20 + legend_w;
+    let title_budget = (area.width as usize)
+        .saturating_sub(fixed + if show_legend { legend_w } else { 0 })
+        .min(60);
+
+    let mut left = vec![
+        Span::styled(
+            mark,
+            Style::default()
+                .bg(palette.accent)
+                .fg(palette.canvas_bg)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::styled("  ", bg),
+        Span::styled(
+            truncate(title, title_budget),
+            bg.fg(palette.text).add_modifier(Modifier::BOLD),
+        ),
+    ];
+    if let Some(m) = model {
+        left.push(Span::styled(" · ", bg.fg(palette.subtle)));
+        left.push(Span::styled(
+            m,
+            bg.fg(look.role(AgentKind::Main))
+                .add_modifier(Modifier::BOLD),
+        ));
+    }
+
+    if show_legend {
+        let [l, r] = Layout::horizontal([Constraint::Fill(1), Constraint::Length(legend_w as u16)])
+            .areas(area);
+        frame.render_widget(Paragraph::new(Line::from(left)).style(bg), l);
+        frame.render_widget(Paragraph::new(Line::from(legend)).style(bg), r);
+    } else {
+        frame.render_widget(Paragraph::new(Line::from(left)).style(bg), area);
     }
 }
 
@@ -566,7 +665,7 @@ fn render_log_line(frame: &mut Frame, row: Rect, app: &App) {
 /// Centered help overlay: full key reference + status-glyph legend.
 fn render_help(frame: &mut Frame, area: Rect, palette: &rataflow::Palette) {
     let w = area.width.min(60);
-    let h = area.height.min(18);
+    let h = area.height.min(19);
     if w < 24 || h < 9 {
         return;
     }
@@ -622,6 +721,13 @@ fn render_help(frame: &mut Frame, area: Rect, palette: &rataflow::Palette) {
         Line::from(vec![
             Span::styled(" pacing    ", key),
             Span::styled("s skip idle gaps (on = »; off = real-time)", txt),
+        ]),
+        Line::from(vec![
+            Span::styled(" theme     ", key),
+            Span::styled(
+                format!("t next theme (now {})", crate::theme::current().id),
+                txt,
+            ),
         ]),
         Line::from(vec![
             Span::styled(" info      ", key),
@@ -705,14 +811,6 @@ fn render_status_bar(frame: &mut Frame, area: Rect, app: &App) {
     let palette = app.flow.theme.palette();
     let bg = Style::default().bg(palette.surface);
 
-    // A format with no title record (Codex) is described by its first prompt.
-    let title = app
-        .session_info
-        .title
-        .as_deref()
-        .or_else(|| app.session.first_prompt())
-        .unwrap_or("session");
-
     // Emergent transport badge — "LIVE" is following + fresh appends, never a
     // hardcoded mode.
     let (badge, badge_color) = match app.transport() {
@@ -723,35 +821,25 @@ fn render_status_bar(frame: &mut Frame, area: Rect, app: &App) {
         Transport::Idle => (" ■ IDLE ", palette.subtle),
     };
 
-    let mut left: Vec<Span> = vec![
-        // Wordmark: the gold identity chip in every screenshot.
-        Span::styled(
-            " zoetrope ",
-            Style::default()
-                .bg(palette.accent)
-                .fg(palette.canvas_bg)
-                .add_modifier(Modifier::BOLD),
-        ),
-        Span::styled(" ", bg),
-        Span::styled(
-            badge,
-            bg.fg(palette.canvas_bg)
-                .bg(badge_color)
-                .add_modifier(Modifier::BOLD),
-        ),
-        Span::styled(" ", bg),
-        Span::styled(
-            truncate(title, 40),
-            bg.fg(palette.text).add_modifier(Modifier::BOLD),
-        ),
-    ];
-
+    // The wordmark and the session title live in the header row; the status
+    // bar keeps transport, counts and hints.
+    let mut left: Vec<Span> = vec![Span::styled(
+        badge,
+        bg.fg(palette.canvas_bg)
+            .bg(badge_color)
+            .add_modifier(Modifier::BOLD),
+    )];
     left.push(Span::styled(
         format!(
             "  {} agents · {} tools",
             app.session.agent_count(),
             app.session.tool_count()
         ),
+        bg.fg(palette.subtle),
+    ));
+
+    left.push(Span::styled(
+        format!("  ◑ {}", crate::theme::current().id),
         bg.fg(palette.subtle),
     ));
 
@@ -799,21 +887,10 @@ fn render_status_bar(frame: &mut Frame, area: Rect, app: &App) {
 }
 
 /// Presence color for a status — single source, paired with
-/// `AgentStatus::glyph()` / `AgentInfo::status_word()` in the model.
-/// Green = alive, calm accent = finished history, dim = idle, red = broken.
-pub(crate) fn status_color(
-    status: crate::state::session::AgentStatus,
-    palette: &rataflow::Palette,
-) -> ratatui::style::Color {
-    use crate::state::session::AgentStatus;
-    match status {
-        AgentStatus::Running => palette.success,
-        AgentStatus::Idle => palette.subtle,
-        AgentStatus::Done => palette.accent,
-        AgentStatus::Failed => palette.error,
-        // Stopped: terminal but not success/failure — a neutral, muted mark.
-        AgentStatus::Stopped => palette.muted,
-    }
+/// `AgentStatus::glyph()` / `AgentInfo::status_word()` in the model. The
+/// active theme decides the colors (see `crate::theme::Look::status`).
+pub(crate) fn status_color(status: crate::state::session::AgentStatus) -> ratatui::style::Color {
+    crate::theme::current().status(status)
 }
 
 /// Truncate to `max` display columns with an ellipsis (column-measured via

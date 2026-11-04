@@ -179,7 +179,7 @@ pub fn render(frame: &mut Frame, area: Rect, app: &mut App, agent_id: &str) {
 fn render_header(frame: &mut Frame, area: Rect, agent: &AgentInfo, palette: &rataflow::Palette) {
     // Single-source vocabulary + presence colors (shared with cards/inspect).
     let status_text = agent.status_word();
-    let status_color = crate::ui::status_color(agent.status, palette);
+    let status_color = crate::ui::status_color(agent.status);
 
     let bg = Style::default().bg(palette.surface);
 
@@ -192,7 +192,8 @@ fn render_header(frame: &mut Frame, area: Rect, agent: &AgentInfo, palette: &rat
         .unwrap_or(agent.kind.default_label());
     lines.push(Line::from(Span::styled(
         title,
-        bg.fg(palette.text).add_modifier(Modifier::BOLD),
+        bg.fg(crate::theme::current().role(agent.kind))
+            .add_modifier(Modifier::BOLD),
     )));
 
     // Status + model.
