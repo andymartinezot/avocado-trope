@@ -51,6 +51,9 @@ pub struct AgentNode {
     /// Name of the most recent tool call, if any.
     pub last_tool: Option<String>,
     pub output_tokens: u64,
+    /// Context in use as of the latest request, and the window when known.
+    pub context_tokens: u64,
+    pub context_window: Option<u64>,
     /// Interactive agents (main, forks) word `Running` as "active": we know
     /// there are recent entries, not that a task is executing.
     pub interactive: bool,
@@ -59,7 +62,7 @@ pub struct AgentNode {
 use crate::ui::truncate;
 
 /// Compact human token count, e.g. `1.2k`, `34`, `2.0M`.
-fn fmt_tokens(n: u64) -> String {
+pub(crate) fn fmt_tokens(n: u64) -> String {
     if n < 1_000 {
         n.to_string()
     } else if n < 1_000_000 {
@@ -191,9 +194,25 @@ impl NodeContent for AgentNode {
             bg_style.fg(palette.subtle),
         )));
 
+        // Tokens row: "ctx 84.0k · 1.4k out" (the window share when known).
+        let mut tokens = Vec::new();
+        if self.context_tokens > 0 {
+            let ctx = match self.context_window.filter(|w| *w > 0) {
+                Some(w) => format!(
+                    "ctx {}% {}",
+                    (self.context_tokens.saturating_mul(100) / w).min(100),
+                    fmt_tokens(self.context_tokens)
+                ),
+                None => format!("ctx {}", fmt_tokens(self.context_tokens)),
+            };
+            tokens.push(ctx);
+        }
         if self.output_tokens > 0 {
+            tokens.push(format!("{} out", fmt_tokens(self.output_tokens)));
+        }
+        if !tokens.is_empty() {
             lines.push(Line::from(Span::styled(
-                format!("{} tok out", fmt_tokens(self.output_tokens)),
+                truncate(&tokens.join(" · "), inner_w),
                 bg_style.fg(palette.subtle),
             )));
         }
@@ -272,6 +291,8 @@ mod tests {
             tool_count: 3,
             last_tool: Some("Bash".into()),
             output_tokens: 1200,
+            context_tokens: 0,
+            context_window: None,
             interactive: false,
         };
         let ctx = NodeRenderContext {

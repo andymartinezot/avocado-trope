@@ -70,6 +70,8 @@ fn content_matches(info: &AgentInfo, node: &AgentNode) -> bool {
         && node.tool_count == info.tool_calls.len()
         && node.last_tool.as_deref() == info.last_tool()
         && node.output_tokens == info.output_tokens
+        && node.context_tokens == info.context_tokens
+        && node.context_window == info.context_window
         && node.interactive == info.is_interactive()
 }
 
@@ -84,6 +86,8 @@ fn build_content(info: &AgentInfo) -> AgentNode {
         tool_count: info.tool_calls.len(),
         last_tool: info.last_tool().map(str::to_string),
         output_tokens: info.output_tokens,
+        context_tokens: info.context_tokens,
+        context_window: info.context_window,
         interactive: info.is_interactive(),
     }
 }

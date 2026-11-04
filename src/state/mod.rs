@@ -213,6 +213,8 @@ pub struct App {
     pub session_info: SessionInfo,
     /// Whether the `i` session-info overlay is shown (`i` toggles, `esc` closes).
     pub show_info: bool,
+    /// The session sidebar (`b`), drawn when the window is wide enough.
+    pub show_sidebar: bool,
     /// Node id awaiting a center-glide, set on a user selection and consumed by
     /// `draw` AFTER the flow has rendered into the split (narrower) canvas —
     /// `center_on` probes the last-rendered size, so centering at event time
@@ -254,6 +256,7 @@ impl App {
             last_batch_at: None,
             session_info: SessionInfo::default(),
             show_info: false,
+            show_sidebar: true,
             pending_center: None,
             pending_seek: None,
             snapshots: Vec::new(),

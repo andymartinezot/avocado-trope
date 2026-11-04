@@ -144,6 +144,12 @@ fn handle_key(key: &KeyEvent, app: &mut App) -> bool {
             return false;
         }
 
+        // Session sidebar on/off.
+        KeyCode::Char('b') | KeyCode::Char('B') => {
+            app.show_sidebar = !app.show_sidebar;
+            return false;
+        }
+
         // Next color theme (presentation only).
         KeyCode::Char('t') | KeyCode::Char('T') => {
             app.flow.theme = crate::theme::cycle().flow_theme();
@@ -387,6 +393,8 @@ mod tests {
                     tool_count: 0,
                     last_tool: None,
                     output_tokens: 0,
+                    context_tokens: 0,
+                    context_window: None,
                     interactive: false,
                 },
             )
@@ -442,6 +450,8 @@ mod tests {
                 tool_count: 0,
                 last_tool: None,
                 output_tokens: 0,
+                context_tokens: 0,
+                context_window: None,
                 interactive: false,
             },
         );
@@ -475,6 +485,8 @@ mod tests {
                 tool_count: 0,
                 last_tool: None,
                 output_tokens: 0,
+                context_tokens: 0,
+                context_window: None,
                 interactive: false,
             },
         );

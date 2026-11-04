@@ -31,6 +31,11 @@
 > (default), `catppuccin`, `tokyo-night`, `gruvbox`, `nord`, `classic` (the original
 > zoetrope look) or `terminal` (your terminal's own colors, for light themes too).
 > Inside a [Herdr](https://herdr.dev) pane it follows Herdr's theme.
+>
+> It also shows more of the session: context in use on every card (with the share of the
+> window when the format records it, as Codex does), a session sidebar (`b`) with elapsed
+> time, agents by state, tool calls and failures, tokens and the last prompt, and a
+> multi-row session log of the latest tool calls and prompts across all agents.
 
 Claude Code and Codex write a transcript for every session. zoetrope reads it and draws
 the session as a graph in your terminal: the main agent, the agents it spawns, and the

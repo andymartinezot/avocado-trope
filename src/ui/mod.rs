@@ -12,6 +12,7 @@
 pub(crate) mod chips;
 pub(crate) mod edges;
 pub(crate) mod nodes;
+pub(crate) mod overview;
 pub(crate) mod panel;
 
 use crate::fact::{FactKind, Outcome};
@@ -49,8 +50,14 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     // prompts (→ 8 rows); bottom: a one-row status bar.
     let show_scrubber = app.timeline.has_span();
     let show_log = show_scrubber && !app.session.prompts.is_empty();
+    // Taller windows get a multi-row session log instead of the one-line narration.
+    let log_rows: u16 = match area.height {
+        h if h >= 40 => 5,
+        h if h >= 30 => 3,
+        _ => 1,
+    };
     let (canvas_area, timeline_area, status_area) = if show_scrubber {
-        let panel_h = if show_log { 8 } else { 6 };
+        let panel_h = if show_log { 7 + log_rows } else { 6 };
         let [canvas, panel, status] = Layout::vertical([
             Constraint::Fill(1),
             Constraint::Length(panel_h),
@@ -71,6 +78,20 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     // Copy the selected agent id out *before* borrowing the flow mutably for
     // the canvas render (borrow split: companions take &Flow, Widget is &mut).
     let selected = app.selected_agent_id();
+
+    // The session sidebar sits left of the canvas when there's width for both
+    // and no detail panel is open (the panel needs the room).
+    let canvas_area = if app.show_sidebar && selected.is_none() && canvas_area.width >= 110 {
+        let [side, rest] = Layout::horizontal([
+            Constraint::Length(overview::SIDEBAR_WIDTH),
+            Constraint::Fill(1),
+        ])
+        .areas(canvas_area);
+        overview::render_sidebar(frame, side, app);
+        rest
+    } else {
+        canvas_area
+    };
 
     // When an agent is selected, split the canvas 30/70 for the detail panel —
     // the panel is what you're reading; the canvas only keeps the selected
@@ -101,7 +122,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     }
 
     if let Some(panel) = timeline_area {
-        render_timeline_panel(frame, panel, app, show_log);
+        render_timeline_panel(frame, panel, app, show_log, log_rows);
     }
 
     render_status_bar(frame, status_area, app);
@@ -164,7 +185,8 @@ fn render_header(frame: &mut Frame, area: Rect, app: &App) {
 
     let mark = " avocado-trope ";
     let model_w = model.as_ref().map_or(0, |m| m.chars().count() + 3);
-    let fixed = mark.chars().count() + 2 + model_w;
+    // Two cells of air before the legend.
+    let fixed = mark.chars().count() + 2 + model_w + 2;
     let show_legend = (area.width as usize) >= fixed + 20 + legend_w;
     let title_budget = (area.width as usize)
         .saturating_sub(fixed + if show_legend { legend_w } else { 0 })
@@ -561,7 +583,13 @@ fn render_scrubber(frame: &mut Frame, area: Rect, app: &mut App) {
 /// The bordered timeline panel: one rounded frame around the scrubber, with an
 /// event-log line and a single `├──┤` divider on top when `show_log` (so there's
 /// one border between the log and the timeline, not two adjacent ones).
-fn render_timeline_panel(frame: &mut Frame, area: Rect, app: &mut App, show_log: bool) {
+fn render_timeline_panel(
+    frame: &mut Frame,
+    area: Rect,
+    app: &mut App,
+    show_log: bool,
+    log_rows: u16,
+) {
     if area.width < 8 || area.height < 6 {
         return;
     }
@@ -579,12 +607,16 @@ fn render_timeline_panel(frame: &mut Frame, area: Rect, app: &mut App, show_log:
     let content = if show_log {
         // Log line (top), a single divider, then the scrubber content (4 rows).
         let [log_row, div_row, scrub] = Layout::vertical([
-            Constraint::Length(1),
+            Constraint::Length(log_rows),
             Constraint::Length(1),
             Constraint::Length(4),
         ])
         .areas(inner);
-        render_log_line(frame, log_row, app);
+        if log_rows > 1 {
+            overview::render_session_log(frame, log_row, app);
+        } else {
+            render_log_line(frame, log_row, app);
+        }
         // One divider that joins the outer frame with ├ … ┤.
         let buf = frame.buffer_mut();
         let dy = div_row.y;
@@ -665,7 +697,7 @@ fn render_log_line(frame: &mut Frame, row: Rect, app: &App) {
 /// Centered help overlay: full key reference + status-glyph legend.
 fn render_help(frame: &mut Frame, area: Rect, palette: &rataflow::Palette) {
     let w = area.width.min(60);
-    let h = area.height.min(19);
+    let h = area.height.min(20);
     if w < 24 || h < 9 {
         return;
     }
@@ -721,6 +753,10 @@ fn render_help(frame: &mut Frame, area: Rect, palette: &rataflow::Palette) {
         Line::from(vec![
             Span::styled(" pacing    ", key),
             Span::styled("s skip idle gaps (on = »; off = real-time)", txt),
+        ]),
+        Line::from(vec![
+            Span::styled(" sidebar   ", key),
+            Span::styled("b session summary on/off", txt),
         ]),
         Line::from(vec![
             Span::styled(" theme     ", key),
