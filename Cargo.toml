@@ -21,9 +21,9 @@ rust-version = "1.88"
 description = "Terminal UI that visualizes Claude Code and Codex agent sessions as a live flow graph."
 license = "MIT"
 readme = "README.md"
-repository = "https://github.com/furkankly/zoetrope"
-homepage = "https://zoetrope.furkankly.dev"
-documentation = "https://zoetrope.furkankly.dev"
+repository = "https://github.com/andymartinezot/avocado-trope"
+homepage = "https://github.com/andymartinezot/avocado-trope"
+documentation = "https://github.com/andymartinezot/avocado-trope"
 keywords = ["claude-code", "codex", "tui", "agents", "visualization"]
 categories = ["command-line-utilities", "development-tools", "visualization"]
 # An allow-list, not a deny-list: state what the crate ships and everything else

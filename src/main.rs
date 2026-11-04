@@ -422,7 +422,9 @@ async fn run_fleet(
     }
     pick_theme(theme);
     tokio::spawn(poller);
-    fleet::view::run(rx, demo.is_some()).await
+    fleet::view::run(rx, demo.is_some()).await?;
+    // Don't wait on a transcript read that's still running: nobody needs it.
+    std::process::exit(0);
 }
 
 /// Start following one session: its app, and a tailer feeding it.
@@ -449,12 +451,14 @@ async fn start_session(
         app: App::new(session_id, mode),
         tail: tail_tx,
         events: ui_rx,
+        ready: false,
     })
 }
 
 /// Run `zoe compare`.
 async fn run_compare(a: String, b: String, speed: f64, theme: Option<String>) -> Result<()> {
     pick_theme(theme);
+    load_herdr_keys();
     let mut sides = Vec::new();
     for arg in [a, b] {
         let target = resolve_target(arg)?;
@@ -512,6 +516,7 @@ async fn run_tui(cli: Cli) -> Result<()> {
     };
 
     pick_theme(theme);
+    load_herdr_keys();
     // A session's id is fixed at launch here; the tailer may re-discover.
     let side = start_session(target, provider, mode, replay, speed, session_id).await?;
     tui::run(side.app, side.tail, side.events).await
@@ -552,6 +557,79 @@ fn pick_theme(flag: Option<String>) {
     {
         zoetrope::theme::set_by_name(&name);
     }
+}
+
+/// Show the Herdr keys bound to this app, when running inside Herdr.
+fn load_herdr_keys() {
+    if std::env::var_os("HERDR_PANE_ID").is_none() {
+        return;
+    }
+    if let Some(text) = herdr_config_path().and_then(|p| read_capped(&p)) {
+        zoetrope::settings::set_herdr_keys(herdr_keys(&text));
+    }
+}
+
+/// `prefix+shift+a` with the prefix spelled out, as a person presses it:
+/// `Ctrl+Space Shift+A`.
+fn pretty_key(key: &str, prefix: &str) -> String {
+    let word = |part: &str| {
+        let mut c = part.chars();
+        c.next().map_or(String::new(), |f| {
+            f.to_uppercase().collect::<String>() + c.as_str()
+        })
+    };
+    let chord = |k: &str| k.split('+').map(word).collect::<Vec<_>>().join("+");
+    match key.strip_prefix("prefix+") {
+        Some(rest) => format!("{} {}", chord(prefix), chord(rest)),
+        None => chord(key),
+    }
+}
+
+/// The keys in a Herdr config that open this app, as (key, what it opens).
+/// A line scan, like [`herdr_theme`]: `key` and `command` are plain strings in
+/// `[[keys.command]]` tables.
+fn herdr_keys(config: &str) -> Vec<(String, String)> {
+    let value = |line: &str, name: &str| {
+        let rest = line.strip_prefix(name)?.trim_start().strip_prefix('=')?;
+        Some(
+            rest.split(" #")
+                .next()?
+                .trim()
+                .trim_matches('"')
+                .to_string(),
+        )
+    };
+    let mut prefix = "ctrl+b".to_string();
+    let mut key = None;
+    let mut out = Vec::new();
+    for line in config.lines().map(str::trim) {
+        if let Some(p) = value(line, "prefix") {
+            prefix = p;
+        } else if line == "[[keys.command]]" {
+            key = None;
+        } else if let Some(k) = value(line, "key") {
+            key = Some(k);
+        } else if let Some(cmd) = value(line, "command")
+            && cmd.contains("avocado-trope")
+            && let Some(k) = key.take()
+        {
+            let what = if cmd.contains("fleet") {
+                "fleet"
+            } else if cmd.contains("zoomed") || cmd.contains("--placement tab") {
+                "full"
+            } else if cmd.contains("--direction right") {
+                "right"
+            } else if cmd.contains("--direction down") {
+                "below"
+            } else {
+                "split"
+            };
+            out.push((k, what.to_string()));
+        }
+    }
+    out.into_iter()
+        .map(|(k, what)| (pretty_key(&k, &prefix), what))
+        .collect()
 }
 
 /// Herdr's config file: `$HERDR_CONFIG_PATH`, else `<config dir>/herdr/config.toml`.
@@ -655,6 +733,38 @@ mod tests {
             Some("nord")
         );
         assert_eq!(herdr_theme(""), None);
+    }
+
+    #[test]
+    fn reads_the_herdr_keys_that_open_this_app() {
+        let cfg = r#"
+[keys]
+prefix = "ctrl+space"
+focus_pane_up = "prefix+i"
+
+[[keys.command]]
+key = "prefix+e"
+type = "shell"
+command = "herdr plugin action invoke show-explorer --plugin herdr-sidebar"
+
+[[keys.command]]
+key = "prefix+shift+a"
+type = "shell"
+command = "herdr plugin pane open --plugin andymartinezot.avocado-trope --entrypoint graph --placement zoomed"
+
+[[keys.command]]
+key = "prefix+shift+e"
+command = "herdr plugin pane open --plugin andymartinezot.avocado-trope --entrypoint fleet --placement zoomed"
+"#;
+        let keys = herdr_keys(cfg);
+        assert_eq!(
+            keys,
+            vec![
+                ("Ctrl+Space Shift+A".to_string(), "full".to_string()),
+                ("Ctrl+Space Shift+E".to_string(), "fleet".to_string()),
+            ]
+        );
+        assert!(herdr_keys("").is_empty());
     }
 
     #[test]

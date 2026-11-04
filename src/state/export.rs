@@ -112,7 +112,7 @@ fn cell(s: &str) -> String {
 pub fn markdown(model: &SessionModel, info: &SessionInfo) -> String {
     let mut out = String::new();
     let title = info.title.as_deref().unwrap_or("Untitled session");
-    out.push_str(&format!("# {title}\n\n"));
+    out.push_str(&format!("# {}\n\n", title.replace(['\n', '\r'], " ")));
     let failed = failures(model);
     let files = files(model);
     let mut facts = vec![
@@ -146,7 +146,8 @@ pub fn markdown(model: &SessionModel, info: &SessionInfo) -> String {
         out.push_str("\n## Files changed\n\n");
         for (path, created) in &files {
             let new = if *created { " (new)" } else { "" };
-            out.push_str(&format!("- `{path}`{new}\n"));
+            // A backtick in a path would end the code span early.
+            out.push_str(&format!("- `{}`{new}\n", path.replace('`', "'")));
         }
     }
     if !failed.is_empty() {

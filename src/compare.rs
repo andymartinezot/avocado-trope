@@ -33,6 +33,15 @@ pub struct Side {
     pub app: App,
     pub tail: mpsc::Sender<TailRequest>,
     pub events: mpsc::Receiver<UiEvent>,
+    /// Its session arrived, or it failed trying: nothing more to wait for.
+    pub ready: bool,
+}
+
+impl Side {
+    fn accept(&mut self, event: UiEvent) {
+        self.ready |= matches!(event, UiEvent::ReplayLoaded { .. } | UiEvent::Error(_));
+        self.app.handle_ui_event(event);
+    }
 }
 
 /// Which side a key goes to.
@@ -42,13 +51,16 @@ enum Route {
     Focused,
 }
 
-fn route(key: &crossterm::event::KeyEvent, editing: bool) -> Route {
+fn route(key: &crossterm::event::KeyEvent, editing: bool, filtered: bool) -> Route {
     if editing {
         return Route::Both;
     }
     match key.code {
-        KeyCode::Char(' ' | '[' | ']' | 'g' | 'G' | 's' | 'S' | 'b' | 'B' | 'e' | 'E' | '/')
-        | KeyCode::End => Route::Both,
+        KeyCode::Char(' ' | '[' | ']' | 'g' | 'G' | 'b' | 'B' | 'e' | 'E' | '/') | KeyCode::End => {
+            Route::Both
+        }
+        // Clearing a filter must clear both, or the next `e` flips them apart.
+        KeyCode::Esc if filtered => Route::Both,
         _ => Route::Focused,
     }
 }
@@ -149,11 +161,16 @@ pub async fn run(mut left: Side, mut right: Side) -> anyhow::Result<()> {
         let now = Instant::now();
         let elapsed = now - last_tick;
         last_tick = now;
+        // One clock: neither side's playhead moves until both are loaded, or
+        // the file that loads first starts ahead and stays ahead.
+        let both_loaded = left.ready && right.ready;
         for app in [&mut left.app, &mut right.app] {
             let _ = app.flow.tick_auto_pan(elapsed);
             app.flow.tick_animation(elapsed);
             app.tick_camera(elapsed);
-            app.tick_timeline(elapsed);
+            if both_loaded {
+                app.tick_timeline(elapsed);
+            }
         }
         if now - last_status >= Duration::from_secs(1) {
             left.app.status_tick();
@@ -170,19 +187,30 @@ pub async fn run(mut left: Side, mut right: Side) -> anyhow::Result<()> {
 
         tokio::select! {
             _ = tick.tick() => {}
-            Some(ev) = left.events.recv() => left.app.handle_ui_event(ev),
-            Some(ev) = right.events.recv() => right.app.handle_ui_event(ev),
+            Some(ev) = left.events.recv() => left.accept(ev),
+            Some(ev) = right.events.recv() => right.accept(ev),
             Some(ev) = event_rx.recv() => {
                 if input(&ev, &mut left.app, &mut right.app, &mut left_focused, split) {
                     break Ok(());
                 }
             }
         }
+        // Drain, so a burst of mouse motion doesn't cost a frame per event.
+        let mut quit = false;
+        while let Ok(ev) = event_rx.try_recv() {
+            if input(&ev, &mut left.app, &mut right.app, &mut left_focused, split) {
+                quit = true;
+                break;
+            }
+        }
         while let Ok(ev) = left.events.try_recv() {
-            left.app.handle_ui_event(ev);
+            left.accept(ev);
         }
         while let Ok(ev) = right.events.try_recv() {
-            right.app.handle_ui_event(ev);
+            right.accept(ev);
+        }
+        if quit {
+            break Ok(());
         }
     };
 
@@ -208,6 +236,9 @@ fn input(event: &Event, a: &mut App, b: &mut App, left_focused: &mut bool, split
                         *left_focused = !*left_focused;
                         return false;
                     }
+                    // Skipping idle gaps paces each side by its own gaps,
+                    // which is exactly what a shared clock rules out.
+                    KeyCode::Char('s') | KeyCode::Char('S') => return false,
                     // One step for both sides, not one each.
                     KeyCode::Char('t') | KeyCode::Char('T') => {
                         let look = crate::theme::cycle();
@@ -219,7 +250,9 @@ fn input(event: &Event, a: &mut App, b: &mut App, left_focused: &mut bool, split
                     _ => {}
                 }
             }
-            match route(key, editing) {
+            let filtered =
+                a.log_errors || b.log_errors || !a.log_query.is_empty() || !b.log_query.is_empty();
+            match route(key, editing, filtered) {
                 Route::Both => {
                     let quit = handler::handle_event(event, a);
                     handler::handle_event(event, b) || quit
@@ -254,13 +287,19 @@ mod tests {
 
     #[test]
     fn transport_goes_to_both_selection_to_one() {
-        assert_eq!(route(&key(KeyCode::Char(' ')), false), Route::Both);
-        assert_eq!(route(&key(KeyCode::Char(']')), false), Route::Both);
-        assert_eq!(route(&key(KeyCode::Char('e')), false), Route::Both);
-        assert_eq!(route(&key(KeyCode::Tab), false), Route::Focused);
-        assert_eq!(route(&key(KeyCode::Char('h')), false), Route::Focused);
+        assert_eq!(route(&key(KeyCode::Char(' ')), false, false), Route::Both);
+        assert_eq!(route(&key(KeyCode::Char(']')), false, false), Route::Both);
+        assert_eq!(route(&key(KeyCode::Char('e')), false, false), Route::Both);
+        assert_eq!(route(&key(KeyCode::Tab), false, false), Route::Focused);
+        assert_eq!(
+            route(&key(KeyCode::Char('h')), false, false),
+            Route::Focused
+        );
         // A search is typed into both, or the two filters would drift apart.
-        assert_eq!(route(&key(KeyCode::Char('h')), true), Route::Both);
+        assert_eq!(route(&key(KeyCode::Char('h')), true, false), Route::Both);
+        // Esc closes one panel, unless a filter is up: that clears on both.
+        assert_eq!(route(&key(KeyCode::Esc), false, false), Route::Focused);
+        assert_eq!(route(&key(KeyCode::Esc), false, true), Route::Both);
     }
 
     #[test]
@@ -271,6 +310,10 @@ mod tests {
         let w = Event::Key(key(KeyCode::Char('w')));
         assert!(!input(&w, &mut a, &mut b, &mut focus, 40));
         assert!(!focus, "w moves the focus");
+        let skip = Event::Key(key(KeyCode::Char('s')));
+        let before = a.timeline.compress_gaps;
+        input(&skip, &mut a, &mut b, &mut focus, 40);
+        assert_eq!(a.timeline.compress_gaps, before, "gap skipping stays off");
         let q = Event::Key(key(KeyCode::Char('q')));
         assert!(input(&q, &mut a, &mut b, &mut focus, 40));
     }

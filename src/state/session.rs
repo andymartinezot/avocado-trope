@@ -733,6 +733,52 @@ impl SessionModel {
             .fold(false, |s, f| self.apply_fact(f) | s)
     }
 
+    /// Mark agents held up by a tool call open past the stuck threshold at
+    /// `now`. Returns whether any mark changed.
+    pub fn recompute_stuck(&mut self, now: Option<DateTime<Utc>>) -> bool {
+        let Some(reference) = now.or(self.last_activity) else {
+            return false;
+        };
+        let after = crate::settings::stuck_after_secs() as i64;
+        // A call left open this long is an interrupted session, not a hang:
+        // nothing will ever close it, and nobody is waiting on it.
+        const ABANDONED_SECS: i64 = 24 * 3600;
+        // Read-only walk first, like `recompute_liveness`: touching an entry
+        // of a persistent map copies it.
+        let changed: Vec<(String, Option<String>)> = self
+            .agents
+            .iter()
+            .filter_map(|(id, agent)| {
+                // Quiet is the test, not the call's age: an agent still writing
+                // records is making progress, whatever it left open earlier.
+                let quiet = agent.last_ts.map(|t| (reference - t).num_seconds());
+                let waiting = !agent.terminal
+                    && agent.status == AgentStatus::Running
+                    && quiet.is_some_and(|q| (after..ABANDONED_SECS).contains(&q));
+                let holding = waiting
+                    .then(|| {
+                        agent
+                            .tool_calls
+                            .iter()
+                            .filter(|c| c.state == ToolState::Pending)
+                            // A spawn stays open for its child's whole life;
+                            // the child is what can get stuck.
+                            .find(|c| !self.spawn_context.contains_key(&c.id))
+                            .map(|c| c.name.clone())
+                    })
+                    .flatten();
+                (holding != agent.stuck).then(|| (id.clone(), holding))
+            })
+            .collect();
+        let any = !changed.is_empty();
+        for (id, holding) in changed {
+            if let Some(a) = self.agents.get_mut(&id) {
+                a.stuck = holding;
+            }
+        }
+        any
+    }
+
     /// Re-derive time-based liveness from each agent's own activity.
     ///
     /// Two families, both inferred from `last_ts` vs `reference` (the wall clock
@@ -759,40 +805,6 @@ impl SessionModel {
     ///
     /// Returns whether any status changed (lets callers skip graph work on the
     /// common nothing-happened tick).
-    /// Mark agents held up by a tool call open past the stuck threshold at
-    /// `now`. Returns whether any mark changed.
-    pub fn recompute_stuck(&mut self, now: Option<DateTime<Utc>>) -> bool {
-        let Some(reference) = now.or(self.last_activity) else {
-            return false;
-        };
-        let after = crate::settings::stuck_after_secs() as i64;
-        // Read-only walk first, like `recompute_liveness`: touching an entry
-        // of a persistent map copies it.
-        let changed: Vec<(String, Option<String>)> = self
-            .agents
-            .iter()
-            .filter_map(|(id, agent)| {
-                let holding = agent
-                    .tool_calls
-                    .iter()
-                    .filter(|c| c.state == ToolState::Pending)
-                    // A spawn stays open for its child's whole life; the child
-                    // is what can get stuck.
-                    .filter(|c| !self.spawn_context.contains_key(&c.id))
-                    .find(|c| c.ts.is_some_and(|t| (reference - t).num_seconds() >= after))
-                    .map(|c| c.name.clone());
-                (holding != agent.stuck).then(|| (id.clone(), holding))
-            })
-            .collect();
-        let any = !changed.is_empty();
-        for (id, holding) in changed {
-            if let Some(a) = self.agents.get_mut(&id) {
-                a.stuck = holding;
-            }
-        }
-        any
-    }
-
     pub fn recompute_liveness(&mut self, now: Option<DateTime<Utc>>) -> bool {
         let Some(reference) = now.or(self.last_activity) else {
             return false;
@@ -1096,6 +1108,35 @@ mod tests {
             outcome: Outcome::Ok,
         }));
         assert!(m.recompute_stuck(Some(t("2026-06-05T10:06:00Z"))));
+        assert_eq!(m.agent(MAIN_ID).unwrap().stuck, None);
+    }
+
+    #[test]
+    fn an_abandoned_call_or_a_busy_agent_is_not_stuck() {
+        let t = |s: &str| s.parse::<DateTime<Utc>>().unwrap();
+        let mut m = SessionModel::new("s".into());
+        let at = |when: &str, kind| Fact {
+            agent: Some(MAIN_ID.to_string()),
+            ts: Some(when.parse().unwrap()),
+            kind,
+        };
+        m.apply_fact(&at(
+            "2026-06-05T10:00:00Z",
+            FactKind::ToolStart {
+                call: "orphan".into(),
+                name: "Bash".into(),
+                summary: None,
+            },
+        ));
+        // Days later: an interrupted session, not a hang.
+        m.recompute_stuck(Some(t("2026-06-08T10:00:00Z")));
+        assert_eq!(m.agent(MAIN_ID).unwrap().stuck, None);
+        // Resumed and writing: the old open call doesn't hold it up.
+        m.apply_fact(&at(
+            "2026-06-05T10:09:00Z",
+            FactKind::Reasoning("on it".into()),
+        ));
+        m.recompute_stuck(Some(t("2026-06-05T10:10:00Z")));
         assert_eq!(m.agent(MAIN_ID).unwrap().stuck, None);
     }
 

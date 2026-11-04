@@ -889,10 +889,24 @@ fn render_status_bar(frame: &mut Frame, area: Rect, app: &App) {
         bg.fg(palette.subtle),
     ));
 
-    left.push(Span::styled(
-        format!("  ◑ {}", crate::theme::current().id),
-        bg.fg(palette.subtle),
-    ));
+    // The log may be one line or absent in a small pane; a search being typed
+    // must still be visible somewhere.
+    if app.log_editing || !app.log_query.is_empty() {
+        let cursor = if app.log_editing { "▏" } else { "" };
+        left.push(Span::styled(
+            format!("  /{}{cursor}", truncate(&app.log_query, 24)),
+            bg.fg(palette.accent),
+        ));
+    }
+    if app.log_errors {
+        left.push(Span::styled("  failures only", bg.fg(palette.error)));
+    }
+    if area.width >= 100 {
+        left.push(Span::styled(
+            format!("  ◑ {}", crate::theme::current().id),
+            bg.fg(palette.subtle),
+        ));
+    }
 
     match app.camera {
         Camera::Overview => left.push(Span::styled("  ⌖ overview", bg.fg(palette.subtle))),
@@ -914,10 +928,16 @@ fn render_status_bar(frame: &mut Frame, area: Rect, app: &App) {
     } else {
         "q quit · "
     };
-    let hints = if app.mode == Mode::Replay {
-        format!("{quit}? help · space pause")
+    // The sidebar lists these too, but it isn't always on screen.
+    let extra = if area.width >= 100 {
+        "b sidebar · t theme · "
     } else {
-        format!("{quit}? help")
+        ""
+    };
+    let hints = if app.mode == Mode::Replay {
+        format!("{extra}{quit}? help · space pause")
+    } else {
+        format!("{extra}{quit}? help")
     };
 
     // Reserve the hint area in terminal CELLS, not bytes: the hints contain

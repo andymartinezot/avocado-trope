@@ -240,6 +240,9 @@ pub fn handle(view: &mut View, event: &Event) -> Action {
             view.message = None;
             if view.editing {
                 match key.code {
+                    KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                        return Action::Quit;
+                    }
                     KeyCode::Esc => {
                         view.query.clear();
                         view.editing = false;
@@ -681,18 +684,33 @@ fn draw_help(frame: &mut Frame, area: Rect) {
 fn open_graph(row: &Row) -> Result<(), String> {
     let exe = std::env::current_exe().map_err(|e| e.to_string())?;
     let mut cmd = std::process::Command::new(exe);
+    // The child starts fresh: hand it what this run was told.
+    cmd.args(["--theme", crate::theme::current().id]);
+    cmd.args([
+        "--stuck-after",
+        &(settings::stuck_after_secs() / 60).max(1).to_string(),
+    ]);
+    if let Some(tokens) = settings::context_window() {
+        cmd.args(["--context-window", &tokens.to_string()]);
+    }
     if let Some(file) = &row.session_file {
         cmd.arg(file);
     } else if let Some(id) = &row.session {
         cmd.arg("--follow");
-        if !row.agent.is_empty() {
+        if crate::provider::Provider::parse(&row.agent).is_some() {
             cmd.args(["--provider", &row.agent]);
         }
         cmd.arg(id);
     } else {
         return Err("this agent has no session yet".to_string());
     }
-    cmd.status().map(|_| ()).map_err(|e| e.to_string())
+    let status = cmd.status().map_err(|e| e.to_string())?;
+    if status.success() {
+        Ok(())
+    } else {
+        // Its message went to the alternate screen with it.
+        Err(format!("couldn't open a graph for {}", row.pane))
+    }
 }
 
 /// The interactive loop.
@@ -728,6 +746,8 @@ pub async fn run(mut rx: latest::Receiver<Snapshot>, demo: bool) -> anyhow::Resu
     view.snapshot = rx.borrow().clone();
     let mut pulse = false;
     let mut beat = tokio::time::interval(Duration::from_millis(500));
+    // After a long stretch with nobody working, one pulse, not a burst of them.
+    beat.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
     let result = loop {
         let any_working = view.snapshot.rows.iter().any(|r| r.status == "working");
         if let Err(e) = terminal.draw(|f| draw(f, &mut view, pulse)) {
@@ -776,8 +796,10 @@ pub async fn run(mut rx: latest::Receiver<Snapshot>, demo: bool) -> anyhow::Resu
                 ratatui::restore();
                 let outcome = tokio::task::spawn_blocking(move || open_graph(&row)).await;
                 terminal = ratatui::init();
-                execute!(stdout(), EnableMouseCapture)?;
-                terminal.clear()?;
+                let _ = execute!(stdout(), EnableMouseCapture);
+                if let Err(e) = terminal.clear() {
+                    break Err(e.into());
+                }
                 paused.store(false, Ordering::Relaxed);
                 if let Ok(Err(e)) = outcome {
                     view.message = Some(e);

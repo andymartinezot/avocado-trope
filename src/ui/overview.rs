@@ -7,7 +7,7 @@
 
 use chrono::{DateTime, Utc};
 use ratatui::Frame;
-use ratatui::layout::Rect;
+use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Padding, Paragraph, Wrap};
@@ -224,10 +224,48 @@ pub(crate) fn render_sidebar(frame: &mut Frame, area: Rect, app: &App) {
         )));
     }
 
+    // The keys worth knowing, pinned to the bottom. Dropped when the window is
+    // too short to fit them under the summary.
+    let key = bg.fg(palette.accent).add_modifier(Modifier::BOLD);
+    let mut keys: Vec<Line> = [
+        ("b", "sidebar"),
+        ("t", "theme"),
+        ("e", "failures"),
+        ("/", "search log"),
+        ("?", "all keys"),
+    ]
+    .iter()
+    .map(|(k, v)| {
+        Line::from(vec![
+            Span::styled(format!("{k:<3}"), key),
+            Span::styled(*v, label),
+        ])
+    })
+    .collect();
+    let herdr = crate::settings::herdr_keys();
+    if !herdr.is_empty() {
+        keys.push(Line::from(Span::styled("in herdr", label)));
+        for (combo, what) in herdr {
+            keys.push(Line::from(vec![
+                Span::styled(truncate(combo, w.saturating_sub(7)), key),
+                Span::styled(format!(" {what}"), label),
+            ]));
+        }
+    }
+    let [summary, _, bottom] = Layout::vertical([
+        Constraint::Fill(1),
+        Constraint::Length(1),
+        Constraint::Length(keys.len() as u16),
+    ])
+    .areas(inner);
+    let fits = inner.height as usize >= keys.len() + 1 + lines.len();
     frame.render_widget(
         Paragraph::new(lines).style(bg).wrap(Wrap { trim: false }),
-        inner,
+        if fits { summary } else { inner },
     );
+    if fits {
+        frame.render_widget(Paragraph::new(keys).style(bg), bottom);
+    }
 }
 
 /// One row of the session log.

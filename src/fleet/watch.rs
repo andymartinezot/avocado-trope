@@ -34,6 +34,8 @@ pub struct Watched {
     model: SessionModel,
     info: SessionInfo,
     last_rescan: Instant,
+    /// A file was rewritten during this pump.
+    restarted: bool,
 }
 
 impl Watched {
@@ -47,6 +49,7 @@ impl Watched {
             model,
             info: SessionInfo::default(),
             last_rescan: Instant::now(),
+            restarted: false,
         }
     }
 
@@ -97,6 +100,7 @@ impl Watched {
                         self.whole_read.clear();
                         self.model = SessionModel::new(self.session.id.clone());
                         self.info = SessionInfo::default();
+                        self.restarted = true;
                         true
                     }
                     ReadResult::NoChange | ReadResult::Missing => false,
@@ -116,6 +120,12 @@ impl Watched {
         let mut any = false;
         for file in &files {
             any |= self.pump_file(file, provider);
+        }
+        // Reread now, so a row never shows the emptied model.
+        if std::mem::take(&mut self.restarted) {
+            for file in &files {
+                self.pump_file(file, provider);
+            }
         }
         any
     }
@@ -159,12 +169,15 @@ impl Watched {
         row.subagents_running = subs_running;
         row.files = files.len();
         row.age_secs = last.map(|t| (now - t).num_seconds().max(0));
-        // Herdr says working, yet the transcript has gone quiet.
-        let quiet = row.status == "working"
-            && row
-                .age_secs
-                .is_some_and(|a| a >= crate::settings::stuck_after_secs() as i64);
-        row.stuck = stuck.or_else(|| quiet.then(|| "no output".to_string()));
+        // Only a working pane can be stuck: Herdr knows an idle one has stopped,
+        // whatever its transcript left open. Working yet quiet counts too.
+        let working = row.status == "working";
+        let quiet = row
+            .age_secs
+            .is_some_and(|a| a >= crate::settings::stuck_after_secs() as i64);
+        row.stuck = working
+            .then(|| stuck.or_else(|| quiet.then(|| "no output".to_string())))
+            .flatten();
     }
 }
 
@@ -179,7 +192,8 @@ pub struct Watchers {
 /// `~/code/x` for a path under the home directory.
 fn short_path(path: &str) -> String {
     match std::env::var("HOME") {
-        Ok(home) if !home.is_empty() && path.starts_with(&home) => {
+        Ok(home) if !home.is_empty() && path == home => "~".to_string(),
+        Ok(home) if !home.is_empty() && path.starts_with(&format!("{home}/")) => {
             format!("~{}", &path[home.len()..])
         }
         _ => path.to_string(),
@@ -254,6 +268,17 @@ impl Watchers {
         };
         let mut loading = rows.iter().filter(|r| unread(self, r)).count();
         if loading > 0 {
+            // A session still being read shouldn't blank the ones already known.
+            for row in rows.iter_mut() {
+                if let Some(w) = row
+                    .session
+                    .as_ref()
+                    .and_then(|id| self.sessions.get_mut(id))
+                    && !w.tails.is_empty()
+                {
+                    w.fill(row, now);
+                }
+            }
             progress(&rows, loading);
         }
         for i in 0..rows.len() {
@@ -274,6 +299,11 @@ impl Watchers {
                 if loading > 0 {
                     progress(&rows, loading);
                 }
+            }
+        }
+        for (row, e) in rows.iter_mut().zip(entries) {
+            if row.title.is_empty() {
+                row.title = e.terminal_title_stripped.clone().unwrap_or_default();
             }
         }
         // Stop following what Herdr no longer reports.
@@ -342,8 +372,11 @@ mod tests {
         assert_eq!(w.model.tool_count(), 1);
         std::fs::write(&path, format!("{USER}\n")).unwrap();
         w.pump();
-        w.pump();
         assert_eq!(w.model.tool_count(), 0, "the old tool call is gone");
+        assert!(
+            w.model.first_prompt().is_some(),
+            "and the file is read again at once"
+        );
         std::fs::remove_dir_all(&dir).unwrap();
     }
 
@@ -364,6 +397,15 @@ mod tests {
         assert_eq!(row.model.as_deref(), Some("claude-opus-4-8"));
         assert_eq!(row.context_tokens, 15);
         assert_eq!(row.tools, 1);
+
+        // Herdr says the pane stopped: an open call in the transcript is not
+        // an alarm.
+        let mut idle = Row {
+            status: "idle".into(),
+            ..Row::default()
+        };
+        w.fill(&mut idle, later);
+        assert_eq!(idle.stuck, None);
         std::fs::remove_dir_all(&dir).unwrap();
     }
 
@@ -382,6 +424,10 @@ mod tests {
     fn home_is_shortened() {
         if let Ok(home) = std::env::var("HOME") {
             assert_eq!(short_path(&format!("{home}/code")), "~/code");
+            assert_eq!(
+                short_path(&format!("{home}ice/code")),
+                format!("{home}ice/code")
+            );
         }
         assert_eq!(short_path("/opt/x"), "/opt/x");
     }

@@ -225,7 +225,12 @@ async fn notify(row: &Row) {
         (Some(s), _) => format!("stuck on {s}"),
         _ => return,
     };
-    let body = format!("{} {why}", row.title);
+    let name = if row.title.is_empty() {
+        &row.pane
+    } else {
+        &row.title
+    };
+    let body = format!("{name} {why}");
     let _ = herdr(&[
         "notification",
         "show",
@@ -323,7 +328,7 @@ pub async fn poll(
                                 }
                             }
                             Err(e) => Snapshot {
-                                rows: Vec::new(),
+                                rows: tx.borrow().rows.clone(),
                                 error: Some(format!("reading sessions failed: {e}")),
                                 loading: 0,
                             },
@@ -337,15 +342,21 @@ pub async fn poll(
                 notify(row).await;
             }
         }
-        seen_first = true;
         before = snapshot.rows.clone();
-        tx.send_if_modified(|current| {
-            let changed = *current != snapshot;
-            if changed {
-                *current = snapshot;
-            }
-            changed
-        });
+        if seen_first {
+            tx.send_if_modified(|current| {
+                let changed = *current != snapshot;
+                if changed {
+                    *current = snapshot;
+                }
+                changed
+            });
+        } else {
+            // Always announce the first result, even an empty one, or a reader
+            // waiting for it would wait forever.
+            tx.send_replace(snapshot);
+        }
+        seen_first = true;
         tokio::time::sleep(interval).await;
     }
 }

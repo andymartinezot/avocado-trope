@@ -61,6 +61,7 @@ fn handle_key(key: &KeyEvent, app: &mut App) -> bool {
     // Typing a log search: every key belongs to the query.
     if app.log_editing {
         match key.code {
+            KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => return true,
             KeyCode::Esc => {
                 app.log_query.clear();
                 app.log_editing = false;

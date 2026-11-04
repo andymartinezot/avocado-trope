@@ -2,6 +2,7 @@
 //! assume and when a quiet tool call counts as stuck. Set once by the native
 //! frontend, read everywhere; plain atomics, like the active theme.
 
+use std::sync::OnceLock;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 /// Claude's standard window. A prompt past it proves a larger one.
@@ -12,9 +13,27 @@ const LARGE_WINDOW: u64 = 1_000_000;
 static CONTEXT_WINDOW: AtomicU64 = AtomicU64::new(0);
 static STUCK_AFTER_SECS: AtomicU64 = AtomicU64::new(300);
 
+static HERDR_KEYS: OnceLock<Vec<(String, String)>> = OnceLock::new();
+
+/// The Herdr keys bound to this app, as (key, what it opens), to show in the
+/// sidebar. Set once at launch from the user's own config.
+pub fn set_herdr_keys(keys: Vec<(String, String)>) {
+    let _ = HERDR_KEYS.set(keys);
+}
+
+/// See [`set_herdr_keys`].
+pub fn herdr_keys() -> &'static [(String, String)] {
+    HERDR_KEYS.get().map_or(&[], Vec::as_slice)
+}
+
 /// Assume this window for agents whose format doesn't state one. 0 clears it.
 pub fn set_context_window(tokens: u64) {
     CONTEXT_WINDOW.store(tokens, Ordering::Relaxed);
+}
+
+/// The window set with [`set_context_window`], if any.
+pub fn context_window() -> Option<u64> {
+    Some(CONTEXT_WINDOW.load(Ordering::Relaxed)).filter(|w| *w > 0)
 }
 
 /// Flag a tool call as stuck after this many seconds without an end.
