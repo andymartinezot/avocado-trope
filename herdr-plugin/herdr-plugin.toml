@@ -8,9 +8,10 @@ platforms = ["macos", "linux"]
 
 # `agent_session` on pane.get / agent.get is what makes this plugin worth having:
 # Herdr already knows which agent occupies a pane and its native session id, which
-# is the pair zoetrope's own discovery would otherwise have to infer. 0.8.2 is the
-# release the field was read from (`herdr api schema --json`, protocol 20).
-min_herdr_version = "0.8.2"
+# is the pair zoetrope's own discovery would otherwise have to infer. The field
+# was read from 0.8.2 (`herdr api schema --json`, protocol 20); 0.9.3 is the floor
+# because the fleet view needs it, as the README says.
+min_herdr_version = "0.9.3"
 
 # `plugin install` runs this after the preview; `plugin link` does not. It downloads
 # a checksum-verified release, or builds from source when it can't.
