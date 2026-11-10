@@ -2,7 +2,7 @@ id = "andymartinezot.avocado-trope"
 name = "avocado-trope"
 # The build step downloads the release matching this version, so it moves with
 # Cargo.toml's. The release workflow refuses a tag where the three disagree.
-version = "0.3.0"
+version = "0.3.1"
 description = "Watch the focused agent's session as a live flow graph, or every agent on one screen."
 platforms = ["macos", "linux"]
 
